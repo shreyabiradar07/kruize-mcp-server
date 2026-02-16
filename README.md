@@ -98,16 +98,21 @@ npx @modelcontextprotocol/inspector http://localhost:8082/mcp/
 # 1. Build the project
 ./mvnw clean install
 
-# 2. Run the JAR file (port 8080)
-java -jar target/kruize-mcp-server-1.0-SNAPSHOT-runner.jar
+# 2. Get your Kruize route URL
+KRUIZE_URL=$(oc get route kruize -n openshift-tuning --template='http://{{ .spec.host }}')
+echo "Kruize URL: $KRUIZE_URL"
 
-# 3. Connect Inspector
+# 3. Run the JAR file with Kruize URL (port 8080)
+KRUIZE_URL=$KRUIZE_URL java -jar target/kruize-mcp-server-1.0-SNAPSHOT-runner.jar
+
+# 4. Connect Inspector
 npx @modelcontextprotocol/inspector http://localhost:8080/mcp/
 ```
 
-**Custom Kruize URL:**
+**Custom Kruize URL (if needed):**
 ```bash
-KRUIZE_URL=http://your-kruize-url:8080 java -jar target/kruize-mcp-server-1.0-SNAPSHOT-runner.jar
+# Replace with your actual Kruize route URL
+KRUIZE_URL=http://kruize-openshift-tuning.apps.your-cluster.com java -jar target/kruize-mcp-server-1.0-SNAPSHOT-runner.jar
 ```
 
 ### Run from JAR - Minikube Configuration
@@ -116,15 +121,19 @@ KRUIZE_URL=http://your-kruize-url:8080 java -jar target/kruize-mcp-server-1.0-SN
 # 1. Build the project
 ./mvnw clean install
 
-# 2. Run the JAR file (port 8082 to avoid conflict with Kruize on 8080/8081)
-QUARKUS_HTTP_PORT=8082 java -jar target/kruize-mcp-server-1.0-SNAPSHOT-runner.jar
+# 2. Get Kruize URL (Minikube IP + NodePort)
+KRUIZE_URL=$(echo "http://$(minikube ip):$(kubectl get svc kruize -n monitoring -o jsonpath='{.spec.ports[0].nodePort}')")
+echo "Kruize URL: $KRUIZE_URL"
 
-# 3. Connect Inspector
+# 3. Run the JAR file (port 8082 to avoid conflict with Kruize on 8080/8081)
+QUARKUS_HTTP_PORT=8082 KRUIZE_URL=$KRUIZE_URL java -jar target/kruize-mcp-server-1.0-SNAPSHOT-runner.jar
+
+# 4. Connect Inspector
 npx @modelcontextprotocol/inspector http://localhost:8082/mcp/
 ```
 
-**Custom Kruize URL:**
+**Custom Kruize URL (if needed):**
 ```bash
-# MCP server runs on 8082, connects to Kruize on 8080
-QUARKUS_HTTP_PORT=8082 KRUIZE_URL=http://your-kruize-url:8080 java -jar target/kruize-mcp-server-1.0-SNAPSHOT-runner.jar
+# Replace with your actual Kruize URL
+QUARKUS_HTTP_PORT=8082 KRUIZE_URL=http://192.168.49.2:30080 java -jar target/kruize-mcp-server-1.0-SNAPSHOT-runner.jar
 ```
