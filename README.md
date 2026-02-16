@@ -24,7 +24,7 @@ cd kruize-mcp-server
 ./local_monitoring_demo.sh -c openshift -e container
 
 # 3. Build and push image
-docker build -t <registry>/<username>/kruize-mcp-server:latest .
+docker build -t <registry>/<username>/kruize-mcp-server:<tag> .
 docker push <registry>/<username>/kruize-mcp-server:<tag>
 
 # 4. Deploy MCP server (in openshift-tuning namespace)
