@@ -16,7 +16,7 @@ Choose your platform:
 
 ```bash
 # 1. Clone and build
-git clone git@github.com:kruize/kruize-mcp-server.git
+git clone https://github.com:kruize/kruize-mcp-server.git
 cd kruize-mcp-server
 ./mvnw install
 
@@ -46,7 +46,7 @@ npx @modelcontextprotocol/inspector http://<route-url>/mcp/
 
 ```bash
 # 1. Clone
-git clone git@github.com:kruize/kruize-mcp-server.git
+git clone https://github.com:kruize/kruize-mcp-server.git
 cd kruize-mcp-server
 
 # 2. Deploy Kruize (sets up Minikube + Prometheus)
@@ -54,13 +54,19 @@ git clone https://github.com/kruize/kruize-demos.git
 cd kruize-demos/monitoring/local_monitoring
 ./local_monitoring_demo.sh -c minikube -f -e container
 
-# 3. Deploy MCP server
+# 3. Get Kruize connection details
+# Get Kruize URL (Minikube IP + NodePort)
+KRUIZE_URL=$(echo "http://$(minikube ip):$(kubectl get svc kruize -n monitoring -o jsonpath='{.spec.ports[0].nodePort}')")
+echo "Kruize URL: $KRUIZE_URL"
+
+# 4. Deploy MCP server
 cd kruize-mcp-server
-# Note: Before deploying, update the KRUIZE_URL to `http://<minikube-ip>:<kruize-port>` in minikube manifest file.
+# Update the KRUIZE_URL in the manifest file with the value from above
+# Edit manifests/kruize-mcp-server-minikube.yaml and replace <minikube-ip>:<kruize-port> with the actual URL
 kubectl apply -f manifests/kruize-mcp-server-minikube.yaml
 kubectl wait --for=condition=ready pod -l app=kruize-mcp-server -n monitoring --timeout=120s
 
-# 4. Port forward and connect Inspector
+# 5. Port forward and connect Inspector
 kubectl port-forward -n monitoring service/kruize-mcp-server-service 8082:8082
 npx @modelcontextprotocol/inspector http://localhost:8082/mcp/
 ```
