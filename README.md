@@ -28,7 +28,7 @@ docker build -t <registry>/<username>/kruize-mcp-server:<tag> .
 docker push <registry>/<username>/kruize-mcp-server:<tag>
 
 # 4. Deploy MCP server (in openshift-tuning namespace)
-oc apply -f manifests/kruize-mcp-server.yaml -n openshift-tuning
+oc apply -f manifests/kruize-mcp-server-openshift.yaml -n openshift-tuning
 oc expose service kruize-mcp-server-service -n openshift-tuning
 
 # 5. Get URL and connect Inspector
