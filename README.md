@@ -75,7 +75,7 @@ npx @modelcontextprotocol/inspector http://localhost:8082/mcp/
 
 ---
 **Important:** After connecting with Inspector tool, verify the URL matches your deployment in the Inspector tool UI:
-- OpenShift: Use the route URL from `oc get route`
+- OpenShift: Use the MCP server route URL from `oc get route kruize-mcp-server-service -n openshift-tuning`
 - Minikube: Use `http://localhost:8082/mcp/` (after port-forward)
 - Local JAR: Use `http://localhost:8080/mcp/` or `http://localhost:8082/mcp/` depending on configuration
 
