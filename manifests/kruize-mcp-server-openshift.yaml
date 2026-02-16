@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kruize-mcp-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kruize-mcp-server
+  template:
+    metadata:
+      labels:
+        app: kruize-mcp-server
+    spec:
+      containers:
+        - name: kruize-mcp-server
+          image: quay.io/shbirada/kruize-mcp-server:latest
+          # Set the environment variable inside the container
+          env:
+            - name: KRUIZE_URL
+              # Use the stable Service DNS name.
+              # Format: http://<service-name>.<namespace>:<port>
+              value: "http://kruize.openshift-tuning:8080"
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              memory: "250Mi"
+              cpu: "0.5"
+            limits:
+              memory: "250Mi"
+              cpu: "0.5"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kruize-mcp-server-service
+spec:
+  selector:
+    app: kruize-mcp-server
+  ports:
+    - name: kruize-mcp-server-port
+      port: 8080
+      targetPort: 8080
