@@ -6,6 +6,7 @@ import io.quarkiverse.mcp.server.Tool;
 import io.quarkiverse.mcp.server.ToolArg;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
 import jakarta.inject.Inject;
+import io.smallrye.common.annotation.Blocking;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -19,12 +20,42 @@ public class KruizeTools {
 
     @Inject
     @RestClient
-    KruizeApiClient apiClient; // Inject the client you defined
+    KruizeApiClient apiClient;
 
     @Inject
     ObjectMapper objectMapper;
+    
+    /**
+     * Helper method to check if notification 323001 exists in the notifications map
+     */
+    private boolean hasNotification323001(Map<String, Notification> notifications) {
+        if (notifications == null) return false;
+        Notification notice = notifications.get("323001");
+        return notice != null && notice.code() == 323001;
+    }
+    
+    /**
+     * Helper method to convert ResourceGroup to ResourceGroupNoCpu by removing CPU fields
+     */
+    private ResourceGroupNoCpu removeCpuFromResourceGroup(ResourceGroup resourceGroup) {
+        if (resourceGroup == null) return null;
+        
+        ResourceConfig requests = resourceGroup.requests();
+        ResourceConfig limits = resourceGroup.limits();
+        
+        ResourceConfigNoCpu requestsNoCpu = requests != null
+            ? new ResourceConfigNoCpu(requests.memory())
+            : null;
+            
+        ResourceConfigNoCpu limitsNoCpu = limits != null
+            ? new ResourceConfigNoCpu(limits.memory())
+            : null;
+        
+        return new ResourceGroupNoCpu(requestsNoCpu, limitsNoCpu);
+    }
 
     @Tool(description = "Retrieves a list of all available experiments.")
+    @Blocking
     public String listAllExperiments() {
         try {
             List<Experiment> experiments = apiClient.getAllExperiments();
@@ -44,6 +75,7 @@ public class KruizeTools {
     }
 
     @Tool(description = "Retrieves a list of all available recommendations.")
+    @Blocking
     public String listAllRecommendations() {
         try {
             List<Recommendations> apiResponse = apiClient.getAllRecommendations(); // Pass null for no name filter
@@ -64,6 +96,7 @@ public class KruizeTools {
     private record RecommendationSource(String parentNamespace, Optional<String> sourceName, Optional<RecommendationData> recommendations) {}
 
     @Tool(description = "Retrieves available cost optimized recommendations.")
+    @Blocking
     public String getCostOptimizedRecommendations() {
         try {
             List<Recommendations> apiResponse = apiClient.getAllRecommendations();
@@ -140,11 +173,35 @@ public class KruizeTools {
                                                     .map(map -> List.copyOf(map.values()))
                                                     .orElse(Collections.emptyList());
 
+                                            // Check if notification 323001 exists
+                                            boolean has323001 = costEngine != null && hasNotification323001(costEngine.notifications());
+                                            
+                                            Optional<Object> config;
+                                            Optional<Object> variation;
+                                            
+                                            if (has323001) {
+                                                // Remove CPU fields for notification 323001
+                                                config = Optional.ofNullable(costEngine)
+                                                    .map(RecommendationEngine::config)
+                                                    .map(this::removeCpuFromResourceGroup);
+                                                variation = Optional.ofNullable(costEngine)
+                                                    .map(RecommendationEngine::variation)
+                                                    .map(this::removeCpuFromResourceGroup);
+                                            } else {
+                                                // Keep data as-is for other cases
+                                                config = Optional.ofNullable(costEngine)
+                                                    .map(RecommendationEngine::config)
+                                                    .map(rg -> (Object) rg);
+                                                variation = Optional.ofNullable(costEngine)
+                                                    .map(RecommendationEngine::variation)
+                                                    .map(rg -> (Object) rg);
+                                            }
+
                                             return new CostRecommendation(
                                                     term,
                                                     recommendationTerm.durationInHours(),
-                                                    Optional.ofNullable(costEngine).map(RecommendationEngine::config),
-                                                    Optional.ofNullable(costEngine).map(RecommendationEngine::variation),
+                                                    config,
+                                                    variation,
                                                     Optional.of(costNotifications)
                                             );
                                         })
@@ -177,6 +234,7 @@ public class KruizeTools {
     private record IdleSource(Recommendations recommendations, RecommendationSource source, Map<String, RecommendationTerm> recommendationTerms) {}
 
     @Tool(description = "Retrieves idle workloads based on notification code 323001. Optionally includes cost recommendations data.")
+    @Blocking
     public String getIdleWorkloads(
             @ToolArg(description = "Set to 'true' to include detailed cost recommendations in the response.")
             boolean includeRecommendations) {
@@ -236,11 +294,35 @@ public class KruizeTools {
                                                 .map(map -> List.copyOf(map.values()))
                                                 .orElse(Collections.emptyList());
 
+                                        // Check if notification 323001 exists
+                                        boolean has323001 = costEngine != null && hasNotification323001(costEngine.notifications());
+                                        
+                                        Optional<Object> config;
+                                        Optional<Object> variation;
+                                        
+                                        if (has323001) {
+                                            // Remove CPU fields for notification 323001
+                                            config = Optional.ofNullable(costEngine)
+                                                .map(RecommendationEngine::config)
+                                                .map(this::removeCpuFromResourceGroup);
+                                            variation = Optional.ofNullable(costEngine)
+                                                .map(RecommendationEngine::variation)
+                                                .map(this::removeCpuFromResourceGroup);
+                                        } else {
+                                            // Keep data as-is for other cases
+                                            config = Optional.ofNullable(costEngine)
+                                                .map(RecommendationEngine::config)
+                                                .map(rg -> (Object) rg);
+                                            variation = Optional.ofNullable(costEngine)
+                                                .map(RecommendationEngine::variation)
+                                                .map(rg -> (Object) rg);
+                                        }
+
                                         return new CostRecommendation(
                                                 entry.getKey(),
                                                 entry.getValue().durationInHours(),
-                                                Optional.ofNullable(costEngine).map(RecommendationEngine::config),
-                                                Optional.ofNullable(costEngine).map(RecommendationEngine::variation),
+                                                config,
+                                                variation,
                                                 Optional.of(costNotifications)
                                         );
                                     })
@@ -271,5 +353,358 @@ public class KruizeTools {
         } catch (Exception e) {
             return "{\"error\": \"An unexpected error occurred: " + e.getMessage() + "\"}";
         }
+    }
+
+    @Tool(description = "Retrieves recommendations for workloads based on flexible search criteria. " +
+            "Users can provide any combination of workload name, type, namespace, and/or container name. " +
+            "Returns all matching workloads with their recommendations.")
+    @Blocking
+    public String listRecommendationsForWorkload(
+            @ToolArg(description = "The name of the workload (optional, e.g., 'auth-cache', 'nginx-deployment').")
+            String workloadName,
+            @ToolArg(description = "The type of workload (optional, e.g., 'deployment', 'statefulset', 'daemonset').")
+            String workloadType,
+            @ToolArg(description = "The namespace where the workload is deployed (optional, e.g., 'app-agent', 'default').")
+            String namespace,
+            @ToolArg(description = "The container name within the workload (optional, e.g., 'app-container').")
+            String containerName) {
+        try {
+            List<Recommendations> apiResponse;
+            
+            // Optimization: If we have enough criteria to identify an experiment, try to find it first
+            // and fetch recommendations directly for that experiment
+            if ((workloadName != null && !workloadName.trim().isEmpty()) &&
+                (workloadType != null && !workloadType.trim().isEmpty()) &&
+                (namespace != null && !namespace.trim().isEmpty())) {
+                
+                // Get all experiments to find matching experiment name
+                List<Experiment> experiments = apiClient.getAllExperiments();
+                
+                if (experiments != null && !experiments.isEmpty()) {
+                    // Find matching experiment(s)
+                    // Experiment name format: datasource|cluster|namespace|workload_type|workload_name
+                    String matchingExperimentName = null;
+                    
+                    for (Experiment exp : experiments) {
+                        String expName = exp.experiment_name();
+                        if (expName == null) continue;
+                        
+                        String[] expParts = expName.split("\\|");
+                        if (expParts.length < 5) continue;
+                        
+                        String expNamespace = expParts[2];
+                        String expWorkloadType = expParts[3];
+                        String expWorkloadName = expParts[4];
+                        
+                        if (expNamespace.equalsIgnoreCase(namespace.trim()) &&
+                            expWorkloadType.equalsIgnoreCase(workloadType.trim()) &&
+                            expWorkloadName.equalsIgnoreCase(workloadName.trim())) {
+                            matchingExperimentName = expName;
+                            break;
+                        }
+                    }
+                    
+                    // If we found a matching experiment, fetch recommendations for it directly
+                    if (matchingExperimentName != null) {
+                        log.info("Found matching experiment: {}. Fetching recommendations directly.", matchingExperimentName);
+                        apiResponse = apiClient.getCostOptimizedRecommendations(matchingExperimentName);
+                    } else {
+                        // No matching experiment found, fall back to getting all recommendations
+                        log.info("No matching experiment found. Fetching all recommendations.");
+                        apiResponse = apiClient.getAllRecommendations();
+                    }
+                } else {
+                    // No experiments available, fall back to getting all recommendations
+                    apiResponse = apiClient.getAllRecommendations();
+                }
+            } else {
+                // Insufficient criteria to identify a specific experiment, get all recommendations
+                apiResponse = apiClient.getAllRecommendations();
+            }
+            
+            if (apiResponse == null || apiResponse.isEmpty()) {
+                return "{\"message\": \"No recommendations found in the system.\"}";
+            }
+
+            List<WorkloadRecommendationResult> matchingResults = new ArrayList<>();
+
+            // Iterate through all recommendations
+            for (Recommendations recommendations : apiResponse) {
+                String experimentName = recommendations.experimentName();
+                String experimentType = recommendations.experimentType();
+                
+                // Parse experiment name: datasource|cluster|namespace|workload_type|workload_name
+                // datasource: prometheus-1 (minikube/kind) or thanos-1 (openshift)
+                String[] expParts = experimentName != null ? experimentName.split("\\|") : new String[0];
+                
+                if (expParts.length < 5) continue;
+                
+                String expNamespace = expParts[2];
+                String expWorkloadType = expParts[3];
+                String expWorkloadName = expParts[4];
+                
+                // Check if experiment matches the search criteria
+                boolean namespaceMatch = namespace == null || namespace.trim().isEmpty() ||
+                                        expNamespace.equalsIgnoreCase(namespace.trim());
+                boolean workloadTypeMatch = workloadType == null || workloadType.trim().isEmpty() ||
+                                           expWorkloadType.equalsIgnoreCase(workloadType.trim());
+                boolean workloadNameMatch = workloadName == null || workloadName.trim().isEmpty() ||
+                                           expWorkloadName.equalsIgnoreCase(workloadName.trim());
+                
+                if (!namespaceMatch || !workloadTypeMatch || !workloadNameMatch) {
+                    continue;
+                }
+
+                // Process kubernetes objects
+                List<KubernetesObject> kubernetesObjects = Optional.ofNullable(recommendations.kubernetesObjects())
+                        .orElse(Collections.emptyList());
+
+                for (KubernetesObject k8sObject : kubernetesObjects) {
+                    // Process containers if container name filter is provided
+                    if (containerName != null && !containerName.trim().isEmpty()) {
+                        List<Container> containers = k8sObject.containers().orElse(Collections.emptyList());
+                        
+                        for (Container container : containers) {
+                            if (container.containerName().equalsIgnoreCase(containerName.trim())) {
+                                WorkloadRecommendationResult result = buildWorkloadResult(
+                                    experimentName,
+                                    experimentType,
+                                    k8sObject.namespace(),
+                                    k8sObject.type(),
+                                    k8sObject.name(),
+                                    Optional.of(container.containerName()),
+                                    container.recommendations()
+                                );
+                                if (result != null) {
+                                    matchingResults.add(result);
+                                }
+                            }
+                        }
+                    } else {
+                        // No container filter - include all containers
+                        List<Container> containers = k8sObject.containers().orElse(Collections.emptyList());
+                        
+                        for (Container container : containers) {
+                            WorkloadRecommendationResult result = buildWorkloadResult(
+                                experimentName,
+                                experimentType,
+                                k8sObject.namespace(),
+                                k8sObject.type(),
+                                k8sObject.name(),
+                                Optional.of(container.containerName()),
+                                container.recommendations()
+                            );
+                            if (result != null) {
+                                matchingResults.add(result);
+                            }
+                        }
+                        
+                        // Also check namespace-level recommendations
+                        Optional<Namespace> namespaceOpt = k8sObject.namespaces();
+                        if (namespaceOpt.isPresent()) {
+                            Namespace ns = namespaceOpt.get();
+                            WorkloadRecommendationResult result = buildWorkloadResult(
+                                experimentName,
+                                experimentType,
+                                k8sObject.namespace(),
+                                k8sObject.type(),
+                                k8sObject.name(),
+                                Optional.empty(),
+                                ns.recommendations()
+                            );
+                            if (result != null) {
+                                matchingResults.add(result);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (matchingResults.isEmpty()) {
+                StringBuilder criteria = new StringBuilder("No recommendations found for workload with criteria: ");
+                if (workloadName != null && !workloadName.trim().isEmpty()) {
+                    criteria.append("name='").append(workloadName).append("' ");
+                }
+                if (workloadType != null && !workloadType.trim().isEmpty()) {
+                    criteria.append("type='").append(workloadType).append("' ");
+                }
+                if (namespace != null && !namespace.trim().isEmpty()) {
+                    criteria.append("namespace='").append(namespace).append("' ");
+                }
+                if (containerName != null && !containerName.trim().isEmpty()) {
+                    criteria.append("container='").append(containerName).append("' ");
+                }
+                return "{\"message\": \"" + criteria.toString().trim() + "\"}";
+            }
+
+            return objectMapper.writeValueAsString(matchingResults);
+
+        } catch (JsonProcessingException e) {
+            log.error("Failed to serialize recommendation data", e);
+            return "{\"error\": \"Failed to serialize recommendation data to JSON: " + e.getMessage() + "\"}";
+        } catch (Exception e) {
+            log.error("Failed to retrieve recommendations for workload", e);
+            return "{\"error\": \"Failed to retrieve recommendations: " + e.getMessage() + "\"}";
+        }
+    }
+
+    private WorkloadRecommendationResult buildWorkloadResult(
+            String experimentName,
+            String experimentType,
+            String namespace,
+            String workloadType,
+            String workloadName,
+            Optional<String> containerName,
+            Optional<RecommendationData> recommendationData) {
+        
+        if (recommendationData.isEmpty()) {
+            return null;
+        }
+
+        RecommendationData recData = recommendationData.get();
+        Map<String, TimestampData> dataMap = recData.data();
+        
+        if (dataMap == null || dataMap.isEmpty()) {
+            return new WorkloadRecommendationResult(
+                experimentName,
+                experimentType,
+                namespace,
+                workloadType,
+                workloadName,
+                containerName,
+                Optional.empty(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Optional.ofNullable(recData.notifications()).map(map -> List.copyOf(map.values())).orElse(Collections.emptyList())
+            );
+        }
+
+        TimestampData timestampData = dataMap.values().iterator().next();
+        ResourceGroup currentUsage = timestampData.current();
+        Map<String, RecommendationTerm> recommendationTerms = timestampData.recommendationTerms();
+        
+        if (recommendationTerms == null) {
+            return new WorkloadRecommendationResult(
+                experimentName,
+                experimentType,
+                namespace,
+                workloadType,
+                workloadName,
+                containerName,
+                Optional.ofNullable(currentUsage),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Optional.ofNullable(recData.notifications()).map(map -> List.copyOf(map.values())).orElse(Collections.emptyList())
+            );
+        }
+
+        List<CostRecommendation> costRecs = recommendationTerms.entrySet().stream()
+            .map(termEntry -> {
+                String term = termEntry.getKey();
+                RecommendationTerm recommendationTerm = termEntry.getValue();
+
+                Map<String, RecommendationEngine> engines = Optional.ofNullable(recommendationTerm.recommendationEngines())
+                        .orElse(Collections.emptyMap());
+                RecommendationEngine costEngine = engines.get("cost");
+
+                List<Notification> costNotifications = Optional.ofNullable(costEngine)
+                        .map(RecommendationEngine::notifications)
+                        .map(map -> List.copyOf(map.values()))
+                        .orElse(Collections.emptyList());
+
+                // Check if notification 323001 exists
+                boolean has323001 = costEngine != null && hasNotification323001(costEngine.notifications());
+                
+                Optional<Object> config;
+                Optional<Object> variation;
+                
+                if (has323001) {
+                    // Remove CPU fields for notification 323001
+                    config = Optional.ofNullable(costEngine)
+                        .map(RecommendationEngine::config)
+                        .map(this::removeCpuFromResourceGroup);
+                    variation = Optional.ofNullable(costEngine)
+                        .map(RecommendationEngine::variation)
+                        .map(this::removeCpuFromResourceGroup);
+                } else {
+                    // Keep data as-is for other cases
+                    config = Optional.ofNullable(costEngine)
+                        .map(RecommendationEngine::config)
+                        .map(rg -> (Object) rg);
+                    variation = Optional.ofNullable(costEngine)
+                        .map(RecommendationEngine::variation)
+                        .map(rg -> (Object) rg);
+                }
+
+                return new CostRecommendation(
+                    term,
+                    recommendationTerm.durationInHours(),
+                    config,
+                    variation,
+                    Optional.of(costNotifications)
+                );
+            })
+            .collect(Collectors.toList());
+
+        List<PerformanceRecommendation> performanceRecs = recommendationTerms.entrySet().stream()
+            .map(termEntry -> {
+                String term = termEntry.getKey();
+                RecommendationTerm recommendationTerm = termEntry.getValue();
+
+                Map<String, RecommendationEngine> engines = Optional.ofNullable(recommendationTerm.recommendationEngines())
+                        .orElse(Collections.emptyMap());
+                RecommendationEngine performanceEngine = engines.get("performance");
+
+                List<Notification> performanceNotifications = Optional.ofNullable(performanceEngine)
+                        .map(RecommendationEngine::notifications)
+                        .map(map -> List.copyOf(map.values()))
+                        .orElse(Collections.emptyList());
+
+                // Check if notification 323001 exists
+                boolean has323001 = performanceEngine != null && hasNotification323001(performanceEngine.notifications());
+                
+                Optional<Object> config;
+                Optional<Object> variation;
+                
+                if (has323001) {
+                    // Remove CPU fields for notification 323001
+                    config = Optional.ofNullable(performanceEngine)
+                        .map(RecommendationEngine::config)
+                        .map(this::removeCpuFromResourceGroup);
+                    variation = Optional.ofNullable(performanceEngine)
+                        .map(RecommendationEngine::variation)
+                        .map(this::removeCpuFromResourceGroup);
+                } else {
+                    // Keep data as-is for other cases
+                    config = Optional.ofNullable(performanceEngine)
+                        .map(RecommendationEngine::config)
+                        .map(rg -> (Object) rg);
+                    variation = Optional.ofNullable(performanceEngine)
+                        .map(RecommendationEngine::variation)
+                        .map(rg -> (Object) rg);
+                }
+
+                return new PerformanceRecommendation(
+                    term,
+                    recommendationTerm.durationInHours(),
+                    config,
+                    variation,
+                    Optional.of(performanceNotifications)
+                );
+            })
+            .collect(Collectors.toList());
+
+        return new WorkloadRecommendationResult(
+            experimentName,
+            experimentType,
+            namespace,
+            workloadType,
+            workloadName,
+            containerName,
+            Optional.ofNullable(currentUsage),
+            costRecs,
+            performanceRecs,
+            Optional.ofNullable(recData.notifications()).map(map -> List.copyOf(map.values())).orElse(Collections.emptyList())
+        );
     }
 }

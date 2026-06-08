@@ -1,5 +1,6 @@
 package org.mcp_server;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 import java.util.Map;
@@ -61,15 +62,37 @@ public final class RecommendationApiResponseRecords {
 
             @JsonProperty("duration_in_hours")
             int durationInHours,
-            Optional<ResourceGroup> config,
-            Optional<ResourceGroup> variation,
+            Optional<Object> config,  // Can be ResourceGroup or ResourceGroupNoCpu
+            Optional<Object> variation,  // Can be ResourceGroup or ResourceGroupNoCpu
+            Optional<List<Notification>> notifications
+    ) {}
+
+    public record PerformanceRecommendation(
+            String term,
+
+            @JsonProperty("duration_in_hours")
+            int durationInHours,
+            Optional<Object> config,  // Can be ResourceGroup or ResourceGroupNoCpu
+            Optional<Object> variation,  // Can be ResourceGroup or ResourceGroupNoCpu
             Optional<List<Notification>> notifications
     ) {}
 
     // --- Records for navigating the JSON structure ---
     public record ResourceMetric(double amount, String format) {}
-    public record ResourceConfig(ResourceMetric cpu, ResourceMetric memory) {}
-    public record ResourceGroup(ResourceConfig requests, ResourceConfig limits) {}
+    
+    public record ResourceConfig(
+            @JsonInclude(JsonInclude.Include.NON_NULL) ResourceMetric cpu,
+            @JsonInclude(JsonInclude.Include.NON_NULL) ResourceMetric memory
+    ) {}
+    
+    public record ResourceGroup(
+            @JsonInclude(JsonInclude.Include.NON_NULL) ResourceConfig requests,
+            @JsonInclude(JsonInclude.Include.NON_NULL) ResourceConfig limits
+    ) {}
+    
+    // Record for ResourceConfig without CPU (for notification 323001)
+    public record ResourceConfigNoCpu(ResourceMetric memory) {}
+    public record ResourceGroupNoCpu(ResourceConfigNoCpu requests, ResourceConfigNoCpu limits) {}
 
     public record RecommendationEngine(
             ResourceGroup config,
@@ -116,5 +139,25 @@ public final class RecommendationApiResponseRecords {
             @JsonProperty("experiment_name") String experimentName,
             @JsonProperty("experiment_type") String experimentType,
             @JsonProperty("kubernetes_objects") List<KubernetesObject> kubernetesObjects
+    ) {}
+
+    // Record for workload recommendation search results
+    public record WorkloadRecommendationResult(
+            @JsonProperty("experiment_name") String experimentName,
+            @JsonProperty("experiment_type") String experimentType,
+            String namespace,
+            @JsonProperty("workload_type") String workloadType,
+            @JsonProperty("workload_name") String workloadName,
+            @JsonProperty("container_name") Optional<String> containerName,
+            @JsonProperty("current")
+            @JsonInclude(JsonInclude.Include.NON_ABSENT)
+            Optional<ResourceGroup> currentUsage,
+            @JsonProperty("cost_recommendations")
+            @JsonInclude(JsonInclude.Include.NON_EMPTY)
+            List<CostRecommendation> costRecommendations,
+            @JsonProperty("performance_recommendations")
+            @JsonInclude(JsonInclude.Include.NON_EMPTY)
+            List<PerformanceRecommendation> performanceRecommendations,
+            List<Notification> notifications
     ) {}
 }

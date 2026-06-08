@@ -8,7 +8,7 @@ import java.util.List;
 import org.mcp_server.ExperimentApiResponseRecords.Experiment;
 import org.mcp_server.RecommendationApiResponseRecords.*;
 
-@RegisterRestClient // No hardcoded URL here!
+@RegisterRestClient
 public interface KruizeApiClient {
 
     @GET
