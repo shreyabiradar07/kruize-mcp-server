@@ -15,6 +15,8 @@ import org.mcp_server.RecommendationApiResponseRecords.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.mcp_server.RecommendationHelper.*;
+
 public class KruizeTools {
     private static final Logger log = LoggerFactory.getLogger(KruizeTools.class);
 
@@ -24,35 +26,6 @@ public class KruizeTools {
 
     @Inject
     ObjectMapper objectMapper;
-    
-    /**
-     * Helper method to check if notification 323001 exists in the notifications map
-     */
-    private boolean hasNotification323001(Map<String, Notification> notifications) {
-        if (notifications == null) return false;
-        Notification notice = notifications.get("323001");
-        return notice != null && notice.code() == 323001;
-    }
-    
-    /**
-     * Helper method to convert ResourceGroup to ResourceGroupNoCpu by removing CPU fields
-     */
-    private ResourceGroupNoCpu removeCpuFromResourceGroup(ResourceGroup resourceGroup) {
-        if (resourceGroup == null) return null;
-        
-        ResourceConfig requests = resourceGroup.requests();
-        ResourceConfig limits = resourceGroup.limits();
-        
-        ResourceConfigNoCpu requestsNoCpu = requests != null
-            ? new ResourceConfigNoCpu(requests.memory())
-            : null;
-            
-        ResourceConfigNoCpu limitsNoCpu = limits != null
-            ? new ResourceConfigNoCpu(limits.memory())
-            : null;
-        
-        return new ResourceGroupNoCpu(requestsNoCpu, limitsNoCpu);
-    }
 
     @Tool(description = "Retrieves a list of all available experiments.")
     @Blocking
@@ -173,25 +146,18 @@ public class KruizeTools {
                                                     .map(map -> List.copyOf(map.values()))
                                                     .orElse(Collections.emptyList());
 
-                                            // Check if notification 323001 exists
-                                            boolean has323001 = costEngine != null && hasNotification323001(costEngine.notifications());
+                                            // Use helper to build config with 323001 handling
+                                            Optional<Object> config = buildConfig(costEngine);
                                             
-                                            Optional<Object> config;
+                                            // Check if idle notification exists for variation handling
+                                            boolean has323001 = costEngine != null && hasIdleNotification(costEngine.notifications());
                                             Optional<Object> variation;
                                             
                                             if (has323001) {
-                                                // Remove CPU fields for notification 323001
-                                                config = Optional.ofNullable(costEngine)
-                                                    .map(RecommendationEngine::config)
-                                                    .map(this::removeCpuFromResourceGroup);
                                                 variation = Optional.ofNullable(costEngine)
                                                     .map(RecommendationEngine::variation)
-                                                    .map(this::removeCpuFromResourceGroup);
+                                                    .map(RecommendationHelper::removeCpuFromResourceGroup);
                                             } else {
-                                                // Keep data as-is for other cases
-                                                config = Optional.ofNullable(costEngine)
-                                                    .map(RecommendationEngine::config)
-                                                    .map(rg -> (Object) rg);
                                                 variation = Optional.ofNullable(costEngine)
                                                     .map(RecommendationEngine::variation)
                                                     .map(rg -> (Object) rg);
@@ -268,10 +234,7 @@ public class KruizeTools {
                                     RecommendationEngine costEngine = Optional.ofNullable(term.recommendationEngines())
                                             .orElse(Collections.emptyMap()).get("cost");
 
-                                    if (costEngine == null || costEngine.notifications() == null) return false;
-
-                                    Notification notice = costEngine.notifications().get("323001");
-                                    return notice != null && "notice".equals(notice.type());
+                                    return costEngine != null && hasIdleNotification(costEngine.notifications());
                                 });
 
                         if (hasIdleNotice) {
@@ -294,25 +257,18 @@ public class KruizeTools {
                                                 .map(map -> List.copyOf(map.values()))
                                                 .orElse(Collections.emptyList());
 
-                                        // Check if notification 323001 exists
-                                        boolean has323001 = costEngine != null && hasNotification323001(costEngine.notifications());
+                                        // Use helper to build config with 323001 handling
+                                        Optional<Object> config = buildConfig(costEngine);
                                         
-                                        Optional<Object> config;
+                                        // Check if idle notification exists for variation handling
+                                        boolean has323001 = costEngine != null && hasIdleNotification(costEngine.notifications());
                                         Optional<Object> variation;
                                         
                                         if (has323001) {
-                                            // Remove CPU fields for notification 323001
-                                            config = Optional.ofNullable(costEngine)
-                                                .map(RecommendationEngine::config)
-                                                .map(this::removeCpuFromResourceGroup);
                                             variation = Optional.ofNullable(costEngine)
                                                 .map(RecommendationEngine::variation)
-                                                .map(this::removeCpuFromResourceGroup);
+                                                .map(RecommendationHelper::removeCpuFromResourceGroup);
                                         } else {
-                                            // Keep data as-is for other cases
-                                            config = Optional.ofNullable(costEngine)
-                                                .map(RecommendationEngine::config)
-                                                .map(rg -> (Object) rg);
                                             variation = Optional.ofNullable(costEngine)
                                                 .map(RecommendationEngine::variation)
                                                 .map(rg -> (Object) rg);
@@ -355,8 +311,7 @@ public class KruizeTools {
         }
     }
 
-    @Tool(description = "Retrieves recommendations for workloads based on flexible search criteria. " +
-            "Users can provide any combination of workload name, type, namespace, and/or container name. " +
+    @Tool(description = "Retrieves workload recommendations by name, type, namespace, and/or container name. " +
             "Returns all matching workloads with their recommendations.")
     @Blocking
     public String listRecommendationsForWorkload(
@@ -466,7 +421,7 @@ public class KruizeTools {
                         
                         for (Container container : containers) {
                             if (container.containerName().equalsIgnoreCase(containerName.trim())) {
-                                WorkloadRecommendationResult result = buildWorkloadResult(
+                                WorkloadRecommendationResult result = RecommendationHelper.buildWorkloadResult(
                                     experimentName,
                                     experimentType,
                                     k8sObject.namespace(),
@@ -485,7 +440,7 @@ public class KruizeTools {
                         List<Container> containers = k8sObject.containers().orElse(Collections.emptyList());
                         
                         for (Container container : containers) {
-                            WorkloadRecommendationResult result = buildWorkloadResult(
+                            WorkloadRecommendationResult result = RecommendationHelper.buildWorkloadResult(
                                 experimentName,
                                 experimentType,
                                 k8sObject.namespace(),
@@ -503,7 +458,7 @@ public class KruizeTools {
                         Optional<Namespace> namespaceOpt = k8sObject.namespaces();
                         if (namespaceOpt.isPresent()) {
                             Namespace ns = namespaceOpt.get();
-                            WorkloadRecommendationResult result = buildWorkloadResult(
+                            WorkloadRecommendationResult result = RecommendationHelper.buildWorkloadResult(
                                 experimentName,
                                 experimentType,
                                 k8sObject.namespace(),
@@ -548,163 +503,4 @@ public class KruizeTools {
         }
     }
 
-    private WorkloadRecommendationResult buildWorkloadResult(
-            String experimentName,
-            String experimentType,
-            String namespace,
-            String workloadType,
-            String workloadName,
-            Optional<String> containerName,
-            Optional<RecommendationData> recommendationData) {
-        
-        if (recommendationData.isEmpty()) {
-            return null;
-        }
-
-        RecommendationData recData = recommendationData.get();
-        Map<String, TimestampData> dataMap = recData.data();
-        
-        if (dataMap == null || dataMap.isEmpty()) {
-            return new WorkloadRecommendationResult(
-                experimentName,
-                experimentType,
-                namespace,
-                workloadType,
-                workloadName,
-                containerName,
-                Optional.empty(),
-                Collections.emptyList(),
-                Collections.emptyList(),
-                Optional.ofNullable(recData.notifications()).map(map -> List.copyOf(map.values())).orElse(Collections.emptyList())
-            );
-        }
-
-        TimestampData timestampData = dataMap.values().iterator().next();
-        ResourceGroup currentUsage = timestampData.current();
-        Map<String, RecommendationTerm> recommendationTerms = timestampData.recommendationTerms();
-        
-        if (recommendationTerms == null) {
-            return new WorkloadRecommendationResult(
-                experimentName,
-                experimentType,
-                namespace,
-                workloadType,
-                workloadName,
-                containerName,
-                Optional.ofNullable(currentUsage),
-                Collections.emptyList(),
-                Collections.emptyList(),
-                Optional.ofNullable(recData.notifications()).map(map -> List.copyOf(map.values())).orElse(Collections.emptyList())
-            );
-        }
-
-        List<CostRecommendation> costRecs = recommendationTerms.entrySet().stream()
-            .map(termEntry -> {
-                String term = termEntry.getKey();
-                RecommendationTerm recommendationTerm = termEntry.getValue();
-
-                Map<String, RecommendationEngine> engines = Optional.ofNullable(recommendationTerm.recommendationEngines())
-                        .orElse(Collections.emptyMap());
-                RecommendationEngine costEngine = engines.get("cost");
-
-                List<Notification> costNotifications = Optional.ofNullable(costEngine)
-                        .map(RecommendationEngine::notifications)
-                        .map(map -> List.copyOf(map.values()))
-                        .orElse(Collections.emptyList());
-
-                // Check if notification 323001 exists
-                boolean has323001 = costEngine != null && hasNotification323001(costEngine.notifications());
-                
-                Optional<Object> config;
-                Optional<Object> variation;
-                
-                if (has323001) {
-                    // Remove CPU fields for notification 323001
-                    config = Optional.ofNullable(costEngine)
-                        .map(RecommendationEngine::config)
-                        .map(this::removeCpuFromResourceGroup);
-                    variation = Optional.ofNullable(costEngine)
-                        .map(RecommendationEngine::variation)
-                        .map(this::removeCpuFromResourceGroup);
-                } else {
-                    // Keep data as-is for other cases
-                    config = Optional.ofNullable(costEngine)
-                        .map(RecommendationEngine::config)
-                        .map(rg -> (Object) rg);
-                    variation = Optional.ofNullable(costEngine)
-                        .map(RecommendationEngine::variation)
-                        .map(rg -> (Object) rg);
-                }
-
-                return new CostRecommendation(
-                    term,
-                    recommendationTerm.durationInHours(),
-                    config,
-                    variation,
-                    Optional.of(costNotifications)
-                );
-            })
-            .collect(Collectors.toList());
-
-        List<PerformanceRecommendation> performanceRecs = recommendationTerms.entrySet().stream()
-            .map(termEntry -> {
-                String term = termEntry.getKey();
-                RecommendationTerm recommendationTerm = termEntry.getValue();
-
-                Map<String, RecommendationEngine> engines = Optional.ofNullable(recommendationTerm.recommendationEngines())
-                        .orElse(Collections.emptyMap());
-                RecommendationEngine performanceEngine = engines.get("performance");
-
-                List<Notification> performanceNotifications = Optional.ofNullable(performanceEngine)
-                        .map(RecommendationEngine::notifications)
-                        .map(map -> List.copyOf(map.values()))
-                        .orElse(Collections.emptyList());
-
-                // Check if notification 323001 exists
-                boolean has323001 = performanceEngine != null && hasNotification323001(performanceEngine.notifications());
-                
-                Optional<Object> config;
-                Optional<Object> variation;
-                
-                if (has323001) {
-                    // Remove CPU fields for notification 323001
-                    config = Optional.ofNullable(performanceEngine)
-                        .map(RecommendationEngine::config)
-                        .map(this::removeCpuFromResourceGroup);
-                    variation = Optional.ofNullable(performanceEngine)
-                        .map(RecommendationEngine::variation)
-                        .map(this::removeCpuFromResourceGroup);
-                } else {
-                    // Keep data as-is for other cases
-                    config = Optional.ofNullable(performanceEngine)
-                        .map(RecommendationEngine::config)
-                        .map(rg -> (Object) rg);
-                    variation = Optional.ofNullable(performanceEngine)
-                        .map(RecommendationEngine::variation)
-                        .map(rg -> (Object) rg);
-                }
-
-                return new PerformanceRecommendation(
-                    term,
-                    recommendationTerm.durationInHours(),
-                    config,
-                    variation,
-                    Optional.of(performanceNotifications)
-                );
-            })
-            .collect(Collectors.toList());
-
-        return new WorkloadRecommendationResult(
-            experimentName,
-            experimentType,
-            namespace,
-            workloadType,
-            workloadName,
-            containerName,
-            Optional.ofNullable(currentUsage),
-            costRecs,
-            performanceRecs,
-            Optional.ofNullable(recData.notifications()).map(map -> List.copyOf(map.values())).orElse(Collections.emptyList())
-        );
-    }
 }
