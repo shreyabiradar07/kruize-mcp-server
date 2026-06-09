@@ -362,7 +362,7 @@ public class KruizeTools {
                     // If we found a matching experiment, fetch recommendations for it directly
                     if (matchingExperimentName != null) {
                         log.info("Found matching experiment: {}. Fetching recommendations directly.", matchingExperimentName);
-                        apiResponse = apiClient.getCostOptimizedRecommendations(matchingExperimentName);
+                        apiResponse = apiClient.getRecommendationsByExperiment(matchingExperimentName);
                     } else {
                         // No matching experiment found, fall back to getting all recommendations
                         log.info("No matching experiment found. Fetching all recommendations.");
