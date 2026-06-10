@@ -311,17 +311,16 @@ public class KruizeTools {
         }
     }
 
-    @Tool(description = "Retrieves workload recommendations by name, type, namespace, and/or container name. " +
-            "Returns all matching workloads with their recommendations.")
+    @Tool(description = "Retrieves workload recommendations by name, type, namespace, and/or container name.")
     @Blocking
     public String listRecommendationsForWorkload(
-            @ToolArg(description = "The name of the workload (optional, e.g., 'auth-cache', 'nginx-deployment').")
+            @ToolArg(description = "Workload name", required = false)
             String workloadName,
-            @ToolArg(description = "The type of workload (optional, e.g., 'deployment', 'statefulset', 'daemonset').")
+            @ToolArg(description = "Workload type", required = false)
             String workloadType,
-            @ToolArg(description = "The namespace where the workload is deployed (optional, e.g., 'app-agent', 'default').")
+            @ToolArg(description = "Namespace", required = false)
             String namespace,
-            @ToolArg(description = "The container name within the workload (optional, e.g., 'app-container').")
+            @ToolArg(description = "Container name", required = false)
             String containerName) {
         try {
             List<Recommendations> apiResponse;
