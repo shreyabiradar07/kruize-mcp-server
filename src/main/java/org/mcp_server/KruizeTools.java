@@ -314,18 +314,18 @@ public class KruizeTools {
 
     @Tool(description = "Get performance recommendations for a workload.")
     @Blocking
-    public String listPerformanceRecommendations(
-            @ToolArg(description = "Worklaod name")
-            @NotBlank
+    public String getPerformanceRecommendations(
+            @ToolArg(description = "Workload name")
+            @NotBlank(message = "Workload name cannot be empty")
             String workloadName,
             @ToolArg(description = "Workload type")
-            @NotBlank
+            @NotBlank(message = "Workload type cannot be empty")
             String workloadType,
             @ToolArg(description = "Namespace")
-            @NotBlank
+            @NotBlank(message = "Namespace cannot be empty")
             String namespace,
             @ToolArg(description = "Container")
-            @NotBlank
+            @NotBlank(message = "Container cannot be empty")
             String container) {
         try {
             // Construct the full experiment name
