@@ -74,7 +74,7 @@ public final class RecommendationApiResponseRecords {
             int durationInHours,
             Optional<Object> config,  // Can be ResourceGroup or ResourceGroupNoCpu
             Optional<Object> variation,  // Can be ResourceGroup or ResourceGroupNoCpu
-            Optional<List<Notification>> notifications
+            List<Notification> notifications
     ) {}
 
     // --- Records for navigating the JSON structure ---
@@ -102,7 +102,12 @@ public final class RecommendationApiResponseRecords {
 
     public record RecommendationTerm(
             @JsonProperty("duration_in_hours") int durationInHours,
-            @JsonProperty("recommendation_engines") Map<String, RecommendationEngine> recommendationEngines
+            @JsonProperty("monitoring_start_time")
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            String monitoringStartTime,
+            @JsonProperty("recommendation_engines") Map<String, RecommendationEngine> recommendationEngines,
+            @JsonInclude(JsonInclude.Include.NON_EMPTY)
+            Map<String, Notification> notifications
     ) {}
 
     public record Notification(String type, String message, int code) {}
@@ -159,5 +164,41 @@ public final class RecommendationApiResponseRecords {
             @JsonInclude(JsonInclude.Include.NON_EMPTY)
             List<PerformanceRecommendation> performanceRecommendations,
             List<Notification> notifications
+    ) {}
+
+    // Record for performance-only recommendation results
+    public record WorkloadPerformanceResult(
+            @JsonProperty("experiment_name") String experimentName,
+            @JsonProperty("experiment_type") String experimentType,
+            String namespace,
+            @JsonProperty("workload_type") String workloadType,
+            @JsonProperty("workload_name") String workloadName,
+            @JsonProperty("container_name") Optional<String> containerName,
+            @JsonProperty("current")
+            @JsonInclude(JsonInclude.Include.NON_ABSENT)
+            Optional<ResourceGroup> currentUsage,
+            @JsonProperty("recommendation_terms")
+            @JsonInclude(JsonInclude.Include.NON_EMPTY)
+            Map<String, PerformanceRecommendationTerm> recommendationTerms,
+            List<Notification> notifications
+    ) {}
+    
+    public record PerformanceRecommendationTerm(
+            @JsonProperty("duration_in_hours")
+            int durationInHours,
+            @JsonProperty("monitoring_start_time")
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            String monitoringStartTime,
+            @JsonProperty("recommendation_engines")
+            Map<String, PerformanceEngineData> recommendationEngines,
+            @JsonInclude(JsonInclude.Include.NON_EMPTY)
+            Map<String, Notification> notifications
+    ) {}
+    
+    public record PerformanceEngineData(
+            Optional<Object> config,  // Can be ResourceGroup or ResourceGroupNoCpu
+            Optional<Object> variation,  // Can be ResourceGroup or ResourceGroupNoCpu
+            @JsonInclude(JsonInclude.Include.NON_EMPTY)
+            Map<String, Notification> notifications
     ) {}
 }

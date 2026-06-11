@@ -78,6 +78,56 @@ public class RecommendationHelper {
     }
     
     /**
+     * Helper method to build config and variation from a RecommendationEngine,
+     * handling 323001 notification by removing CPU fields when present.
+     *
+     * @param engine The recommendation engine to extract data from
+     * @return A record containing config and variation optionals
+     */
+    private static EngineConfigVariation buildConfigAndVariation(RecommendationEngine engine) {
+        if (engine == null) {
+            return new EngineConfigVariation(Optional.empty(), Optional.empty());
+        }
+        
+        boolean has323001 = hasIdleNotification(engine.notifications());
+        
+        Optional<Object> config;
+        Optional<Object> variation;
+        
+        if (has323001) {
+            config = Optional.ofNullable(engine.config())
+                    .map(RecommendationHelper::removeCpuFromResourceGroup);
+            variation = Optional.ofNullable(engine.variation())
+                    .map(RecommendationHelper::removeCpuFromResourceGroup);
+        } else {
+            config = Optional.ofNullable(engine.config())
+                    .map(rg -> (Object) rg);
+            variation = Optional.ofNullable(engine.variation())
+                    .map(rg -> (Object) rg);
+        }
+        
+        return new EngineConfigVariation(config, variation);
+    }
+    
+    /**
+     * Helper record to hold config and variation data
+     */
+    private record EngineConfigVariation(Optional<Object> config, Optional<Object> variation) {}
+    
+    /**
+     * Helper method to extract notifications from a RecommendationEngine
+     *
+     * @param engine The recommendation engine
+     * @return List of notifications, or empty list if none
+     */
+    private static List<Notification> extractNotifications(RecommendationEngine engine) {
+        return Optional.ofNullable(engine)
+                .map(RecommendationEngine::notifications)
+                .map(map -> List.copyOf(map.values()))
+                .orElse(Collections.emptyList());
+    }
+    
+    /**
      * Helper method to build a WorkloadRecommendationResult from recommendation data.
      * Processes both cost and performance recommendations, handling 323001 notification appropriately.
      *
@@ -149,34 +199,15 @@ public class RecommendationHelper {
                         .orElse(Collections.emptyMap());
                 RecommendationEngine costEngine = engines.get("cost");
 
-                List<Notification> costNotifications = Optional.ofNullable(costEngine)
-                        .map(RecommendationEngine::notifications)
-                        .map(map -> List.copyOf(map.values()))
-                        .orElse(Collections.emptyList());
-
-                // Use helper to build config with 323001 handling
-                Optional<Object> config = buildConfig(costEngine);
-                
-                // Check if idle notification exists for variation handling
-                boolean has323001 = costEngine != null && hasIdleNotification(costEngine.notifications());
-                Optional<Object> variation;
-                
-                if (has323001) {
-                    variation = Optional.ofNullable(costEngine)
-                        .map(RecommendationEngine::variation)
-                        .map(RecommendationHelper::removeCpuFromResourceGroup);
-                } else {
-                    variation = Optional.ofNullable(costEngine)
-                        .map(RecommendationEngine::variation)
-                        .map(rg -> (Object) rg);
-                }
+                List<Notification> costNotifications = extractNotifications(costEngine);
+                EngineConfigVariation configVar = buildConfigAndVariation(costEngine);
 
                 return new CostRecommendation(
                     term,
                     recommendationTerm.durationInHours(),
-                    config,
-                    variation,
-                    Optional.of(costNotifications)
+                    configVar.config(),
+                    configVar.variation(),
+                    costNotifications.isEmpty() ? Optional.empty() : Optional.of(costNotifications)
                 );
             })
             .collect(Collectors.toList());
@@ -190,34 +221,15 @@ public class RecommendationHelper {
                         .orElse(Collections.emptyMap());
                 RecommendationEngine performanceEngine = engines.get("performance");
 
-                List<Notification> performanceNotifications = Optional.ofNullable(performanceEngine)
-                        .map(RecommendationEngine::notifications)
-                        .map(map -> List.copyOf(map.values()))
-                        .orElse(Collections.emptyList());
-
-                // Use helper to build config with 323001 handling
-                Optional<Object> config = buildConfig(performanceEngine);
-                
-                // Check if idle notification exists for variation handling
-                boolean has323001 = performanceEngine != null && hasIdleNotification(performanceEngine.notifications());
-                Optional<Object> variation;
-                
-                if (has323001) {
-                    variation = Optional.ofNullable(performanceEngine)
-                        .map(RecommendationEngine::variation)
-                        .map(RecommendationHelper::removeCpuFromResourceGroup);
-                } else {
-                    variation = Optional.ofNullable(performanceEngine)
-                        .map(RecommendationEngine::variation)
-                        .map(rg -> (Object) rg);
-                }
+                List<Notification> performanceNotifications = extractNotifications(performanceEngine);
+                EngineConfigVariation configVar = buildConfigAndVariation(performanceEngine);
 
                 return new PerformanceRecommendation(
                     term,
                     recommendationTerm.durationInHours(),
-                    config,
-                    variation,
-                    Optional.of(performanceNotifications)
+                    configVar.config(),
+                    configVar.variation(),
+                    performanceNotifications
                 );
             })
             .collect(Collectors.toList());
@@ -232,6 +244,120 @@ public class RecommendationHelper {
             Optional.ofNullable(currentUsage),
             costRecs,
             performanceRecs,
+            Optional.ofNullable(recData.notifications()).map(map -> List.copyOf(map.values())).orElse(Collections.emptyList())
+        );
+    }
+
+    /**
+     * Helper method to build a WorkloadPerformanceResult from recommendation data.
+     * Processes only performance recommendations, handling 323001 notification appropriately.
+     *
+     * @param experimentName The name of the experiment
+     * @param experimentType The type of the experiment
+     * @param namespace The namespace of the workload
+     * @param workloadType The type of workload (deployment, statefulset, etc.)
+     * @param workloadName The name of the workload
+     * @param containerName Optional container name
+     * @param recommendationData Optional recommendation data
+     * @return WorkloadPerformanceResult or null if no recommendation data
+     */
+    public static WorkloadPerformanceResult buildWorkloadPerformanceResult(
+            String experimentName,
+            String experimentType,
+            String namespace,
+            String workloadType,
+            String workloadName,
+            Optional<String> containerName,
+            Optional<RecommendationData> recommendationData) {
+        
+        if (recommendationData.isEmpty()) {
+            return null;
+        }
+
+        RecommendationData recData = recommendationData.get();
+        Map<String, TimestampData> dataMap = recData.data();
+        
+        if (dataMap == null || dataMap.isEmpty()) {
+            return new WorkloadPerformanceResult(
+                experimentName,
+                experimentType,
+                namespace,
+                workloadType,
+                workloadName,
+                containerName,
+                Optional.empty(),
+                Collections.emptyMap(),
+                Optional.ofNullable(recData.notifications()).map(map -> List.copyOf(map.values())).orElse(Collections.emptyList())
+            );
+        }
+
+        TimestampData timestampData = dataMap.values().iterator().next();
+        ResourceGroup currentUsage = timestampData.current();
+        Map<String, RecommendationTerm> recommendationTerms = timestampData.recommendationTerms();
+        
+        if (recommendationTerms == null) {
+            return new WorkloadPerformanceResult(
+                experimentName,
+                experimentType,
+                namespace,
+                workloadType,
+                workloadName,
+                containerName,
+                Optional.ofNullable(currentUsage),
+                Collections.emptyMap(),
+                Optional.ofNullable(recData.notifications()).map(map -> List.copyOf(map.values())).orElse(Collections.emptyList())
+            );
+        }
+
+        // Build the recommendation_terms map with performance engine data
+        Map<String, PerformanceRecommendationTerm> performanceTermsMap = recommendationTerms.entrySet().stream()
+            .collect(Collectors.toMap(
+                Map.Entry::getKey,
+                termEntry -> {
+                    RecommendationTerm recommendationTerm = termEntry.getValue();
+                    
+                    Map<String, RecommendationEngine> engines = Optional.ofNullable(recommendationTerm.recommendationEngines())
+                            .orElse(Collections.emptyMap());
+                    RecommendationEngine performanceEngine = engines.get("performance");
+                    
+                    // Build performance engine data
+                    Map<String, PerformanceEngineData> engineDataMap = new java.util.HashMap<>();
+                    if (performanceEngine != null) {
+                        EngineConfigVariation configVar = buildConfigAndVariation(performanceEngine);
+                        
+                        PerformanceEngineData perfData = new PerformanceEngineData(
+                            configVar.config(),
+                            configVar.variation(),
+                            Optional.ofNullable(performanceEngine.notifications()).orElse(Collections.emptyMap())
+                        );
+                        engineDataMap.put("performance", perfData);
+                    }
+                    
+                    // Filter term-level notifications to only include performance-related ones (code 112102)
+                    Map<String, Notification> termNotifications = Optional.ofNullable(recommendationTerm.notifications())
+                        .orElse(Collections.emptyMap())
+                        .entrySet().stream()
+                        .filter(entry -> entry.getValue().code() == 112102)
+                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+                    
+                    return new PerformanceRecommendationTerm(
+                        recommendationTerm.durationInHours(),
+                        recommendationTerm.monitoringStartTime(),
+                        engineDataMap,
+                        termNotifications
+                    );
+                }
+            ));
+
+        return new WorkloadPerformanceResult(
+            experimentName,
+            experimentType,
+            namespace,
+            workloadType,
+            workloadName,
+            containerName,
+            Optional.ofNullable(currentUsage),
+            performanceTermsMap,
             Optional.ofNullable(recData.notifications()).map(map -> List.copyOf(map.values())).orElse(Collections.emptyList())
         );
     }

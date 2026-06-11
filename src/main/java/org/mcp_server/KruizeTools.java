@@ -6,6 +6,7 @@ import io.quarkiverse.mcp.server.Tool;
 import io.quarkiverse.mcp.server.ToolArg;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
 import jakarta.inject.Inject;
+import jakarta.validation.constraints.NotBlank;
 import io.smallrye.common.annotation.Blocking;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -168,7 +169,7 @@ public class KruizeTools {
                                                     recommendationTerm.durationInHours(),
                                                     config,
                                                     variation,
-                                                    Optional.of(costNotifications)
+                                                    costNotifications.isEmpty() ? Optional.empty() : Optional.of(costNotifications)
                                             );
                                         })
                                         .collect(Collectors.toList());
@@ -279,7 +280,7 @@ public class KruizeTools {
                                                 entry.getValue().durationInHours(),
                                                 config,
                                                 variation,
-                                                Optional.of(costNotifications)
+                                                costNotifications.isEmpty() ? Optional.empty() : Optional.of(costNotifications)
                                         );
                                     })
                                     .collect(Collectors.toList());
@@ -311,187 +312,90 @@ public class KruizeTools {
         }
     }
 
-    @Tool(description = "Retrieves workload recommendations by name, type, namespace, and/or container name.")
+    @Tool(description = "Get performance recommendations for a workload.")
     @Blocking
-    public String listRecommendationsForWorkload(
-            @ToolArg(description = "Workload name", required = false)
+    public String listPerformanceRecommendations(
+            @ToolArg(description = "Worklaod name")
+            @NotBlank
             String workloadName,
-            @ToolArg(description = "Workload type", required = false)
+            @ToolArg(description = "Workload type")
+            @NotBlank
             String workloadType,
-            @ToolArg(description = "Namespace", required = false)
+            @ToolArg(description = "Namespace")
+            @NotBlank
             String namespace,
-            @ToolArg(description = "Container name", required = false)
-            String containerName) {
+            @ToolArg(description = "Container")
+            @NotBlank
+            String container) {
         try {
-            List<Recommendations> apiResponse;
+            // Construct the full experiment name
+            // Experiment name format: datasource|cluster|namespace|workload_name(workload_type)|container_name
+            // For OpenShift, use thanos-1 as datasource and default as cluster
+            String experimentName = "thanos-1|default|" + namespace.trim() + "|" +
+                                   workloadName.trim() + "(" + workloadType.trim() + ")|" +
+                                   container.trim();
             
-            // Optimization: If we have enough criteria to identify an experiment, try to find it first
-            // and fetch recommendations directly for that experiment
-            if ((workloadName != null && !workloadName.trim().isEmpty()) &&
-                (workloadType != null && !workloadType.trim().isEmpty()) &&
-                (namespace != null && !namespace.trim().isEmpty())) {
-                
-                // Get all experiments to find matching experiment name
-                List<Experiment> experiments = apiClient.getAllExperiments();
-                
-                if (experiments != null && !experiments.isEmpty()) {
-                    // Find matching experiment(s)
-                    // Experiment name format: datasource|cluster|namespace|workload_type|workload_name
-                    String matchingExperimentName = null;
-                    
-                    for (Experiment exp : experiments) {
-                        String expName = exp.experiment_name();
-                        if (expName == null) continue;
-                        
-                        String[] expParts = expName.split("\\|");
-                        if (expParts.length < 5) continue;
-                        
-                        String expNamespace = expParts[2];
-                        String expWorkloadType = expParts[3];
-                        String expWorkloadName = expParts[4];
-                        
-                        if (expNamespace.equalsIgnoreCase(namespace.trim()) &&
-                            expWorkloadType.equalsIgnoreCase(workloadType.trim()) &&
-                            expWorkloadName.equalsIgnoreCase(workloadName.trim())) {
-                            matchingExperimentName = expName;
-                            break;
-                        }
-                    }
-                    
-                    // If we found a matching experiment, fetch recommendations for it directly
-                    if (matchingExperimentName != null) {
-                        log.info("Found matching experiment: {}. Fetching recommendations directly.", matchingExperimentName);
-                        apiResponse = apiClient.getRecommendationsByExperiment(matchingExperimentName);
-                    } else {
-                        // No matching experiment found, fall back to getting all recommendations
-                        log.info("No matching experiment found. Fetching all recommendations.");
-                        apiResponse = apiClient.getAllRecommendations();
-                    }
-                } else {
-                    // No experiments available, fall back to getting all recommendations
-                    apiResponse = apiClient.getAllRecommendations();
-                }
-            } else {
-                // Insufficient criteria to identify a specific experiment, get all recommendations
-                apiResponse = apiClient.getAllRecommendations();
+            log.info("Fetching recommendations for experiment: {}", experimentName);
+            
+            // Try to get the specific experiment
+            List<Experiment> experiments = apiClient.getExperimentsByName(experimentName);
+            
+            if (experiments == null || experiments.isEmpty()) {
+                return "{\"message\": \"No experiment found with name: '" + experimentName +
+                       "'. Please verify the workload details: name='" + workloadName +
+                       "', type='" + workloadType + "', namespace='" + namespace +
+                       "', container='" + container + "'\"}";
             }
+            
+            // Use the matching experiment name
+            String matchingExperimentName = experiments.get(0).experiment_name();
+            
+            // Fetch recommendations for the matching experiment
+            log.info("Found matching experiment: {}. Fetching recommendations.", matchingExperimentName);
+            List<Recommendations> apiResponse = apiClient.getRecommendationsByExperiment(matchingExperimentName);
             
             if (apiResponse == null || apiResponse.isEmpty()) {
                 return "{\"message\": \"No recommendations found in the system.\"}";
             }
 
-            List<WorkloadRecommendationResult> matchingResults = new ArrayList<>();
+            // Since experiment name is already matched, there will be only one recommendation
+            Recommendations recommendations = apiResponse.get(0);
+            String experimentType = recommendations.experimentType();
 
-            // Iterate through all recommendations
-            for (Recommendations recommendations : apiResponse) {
-                String experimentName = recommendations.experimentName();
-                String experimentType = recommendations.experimentType();
-                
-                // Parse experiment name: datasource|cluster|namespace|workload_type|workload_name
-                // datasource: prometheus-1 (minikube/kind) or thanos-1 (openshift)
-                String[] expParts = experimentName != null ? experimentName.split("\\|") : new String[0];
-                
-                if (expParts.length < 5) continue;
-                
-                String expNamespace = expParts[2];
-                String expWorkloadType = expParts[3];
-                String expWorkloadName = expParts[4];
-                
-                // Check if experiment matches the search criteria
-                boolean namespaceMatch = namespace == null || namespace.trim().isEmpty() ||
-                                        expNamespace.equalsIgnoreCase(namespace.trim());
-                boolean workloadTypeMatch = workloadType == null || workloadType.trim().isEmpty() ||
-                                           expWorkloadType.equalsIgnoreCase(workloadType.trim());
-                boolean workloadNameMatch = workloadName == null || workloadName.trim().isEmpty() ||
-                                           expWorkloadName.equalsIgnoreCase(workloadName.trim());
-                
-                if (!namespaceMatch || !workloadTypeMatch || !workloadNameMatch) {
-                    continue;
-                }
+            // Process kubernetes objects directly - there will be only one k8s object
+            List<KubernetesObject> kubernetesObjects = Optional.ofNullable(recommendations.kubernetesObjects())
+                    .orElse(Collections.emptyList());
 
-                // Process kubernetes objects
-                List<KubernetesObject> kubernetesObjects = Optional.ofNullable(recommendations.kubernetesObjects())
-                        .orElse(Collections.emptyList());
-
-                for (KubernetesObject k8sObject : kubernetesObjects) {
-                    // Process containers if container name filter is provided
-                    if (containerName != null && !containerName.trim().isEmpty()) {
-                        List<Container> containers = k8sObject.containers().orElse(Collections.emptyList());
-                        
-                        for (Container container : containers) {
-                            if (container.containerName().equalsIgnoreCase(containerName.trim())) {
-                                WorkloadRecommendationResult result = RecommendationHelper.buildWorkloadResult(
-                                    experimentName,
-                                    experimentType,
-                                    k8sObject.namespace(),
-                                    k8sObject.type(),
-                                    k8sObject.name(),
-                                    Optional.of(container.containerName()),
-                                    container.recommendations()
-                                );
-                                if (result != null) {
-                                    matchingResults.add(result);
-                                }
-                            }
-                        }
-                    } else {
-                        // No container filter - include all containers
-                        List<Container> containers = k8sObject.containers().orElse(Collections.emptyList());
-                        
-                        for (Container container : containers) {
-                            WorkloadRecommendationResult result = RecommendationHelper.buildWorkloadResult(
-                                experimentName,
-                                experimentType,
-                                k8sObject.namespace(),
-                                k8sObject.type(),
-                                k8sObject.name(),
-                                Optional.of(container.containerName()),
-                                container.recommendations()
-                            );
-                            if (result != null) {
-                                matchingResults.add(result);
-                            }
-                        }
-                        
-                        // Also check namespace-level recommendations
-                        Optional<Namespace> namespaceOpt = k8sObject.namespaces();
-                        if (namespaceOpt.isPresent()) {
-                            Namespace ns = namespaceOpt.get();
-                            WorkloadRecommendationResult result = RecommendationHelper.buildWorkloadResult(
-                                experimentName,
-                                experimentType,
-                                k8sObject.namespace(),
-                                k8sObject.type(),
-                                k8sObject.name(),
-                                Optional.empty(),
-                                ns.recommendations()
-                            );
-                            if (result != null) {
-                                matchingResults.add(result);
-                            }
-                        }
-                    }
-                }
+            if (kubernetesObjects.isEmpty()) {
+                return "{\"message\": \"No kubernetes objects found for the matched experiment.\"}";
             }
 
-            if (matchingResults.isEmpty()) {
-                StringBuilder criteria = new StringBuilder("No recommendations found for workload with criteria: ");
-                if (workloadName != null && !workloadName.trim().isEmpty()) {
-                    criteria.append("name='").append(workloadName).append("' ");
-                }
-                if (workloadType != null && !workloadType.trim().isEmpty()) {
-                    criteria.append("type='").append(workloadType).append("' ");
-                }
-                if (namespace != null && !namespace.trim().isEmpty()) {
-                    criteria.append("namespace='").append(namespace).append("' ");
-                }
-                if (containerName != null && !containerName.trim().isEmpty()) {
-                    criteria.append("container='").append(containerName).append("' ");
-                }
-                return "{\"message\": \"" + criteria.toString().trim() + "\"}";
+            KubernetesObject k8sObject = kubernetesObjects.get(0);
+            
+            // Get the single container (experiment name already includes container name, so there's only one)
+            List<Container> containers = k8sObject.containers().orElse(Collections.emptyList());
+            
+            if (containers.isEmpty()) {
+                return "{\"message\": \"No container found in the matched experiment.\"}";
+            }
+            
+            Container containerObj = containers.get(0);
+            
+            WorkloadPerformanceResult result = RecommendationHelper.buildWorkloadPerformanceResult(
+                experimentName,
+                experimentType,
+                k8sObject.namespace(),
+                k8sObject.type(),
+                k8sObject.name(),
+                Optional.of(containerObj.containerName()),
+                containerObj.recommendations()
+            );
+            
+            if (result == null) {
+                return "{\"message\": \"No performance recommendations available for the specified container.\"}";
             }
 
-            return objectMapper.writeValueAsString(matchingResults);
+            return objectMapper.writeValueAsString(result);
 
         } catch (JsonProcessingException e) {
             log.error("Failed to serialize recommendation data", e);
