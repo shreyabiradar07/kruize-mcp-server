@@ -312,96 +312,81 @@ public class KruizeTools {
         }
     }
 
-    @Tool(description = "Get performance recommendations for a workload.")
+    @Tool(description = "Get performance recommendations for a container. Optionally filter by namespace.")
     @Blocking
     public String getPerformanceRecommendations(
-            @ToolArg(description = "Workload name")
-            @NotBlank(message = "Workload name cannot be empty")
-            String workloadName,
-            @ToolArg(description = "Workload type")
-            @NotBlank(message = "Workload type cannot be empty")
-            String workloadType,
+            @ToolArg(description = "Container name")
+            @NotBlank(message = "Container name cannot be empty")
+            String containerName,
             @ToolArg(description = "Namespace")
-            @NotBlank(message = "Namespace cannot be empty")
-            String namespace,
-            @ToolArg(description = "Container")
-            @NotBlank(message = "Container cannot be empty")
-            String container) {
+            String namespace) {
         try {
-            // Construct the full experiment name
-            // Experiment name format: datasource|cluster|namespace|workload_name(workload_type)|container_name
-            // For OpenShift, use thanos-1 as datasource and default as cluster
-            String experimentName = "thanos-1|default|" + namespace.trim() + "|" +
-                                   workloadName.trim() + "(" + workloadType.trim() + ")|" +
-                                   container.trim();
+            log.info("Fetching performance recommendations for container: {}, namespace: {}",
+                    containerName, namespace != null ? namespace : "all");
             
-            log.info("Fetching recommendations for experiment: {}", experimentName);
+            // Fetch all recommendations
+            List<Recommendations> allRecommendations = apiClient.getAllRecommendations();
             
-            // Try to get the specific experiment
-            List<Experiment> experiments = apiClient.getExperimentsByName(experimentName);
-            
-            if (experiments == null || experiments.isEmpty()) {
-                return "{\"message\": \"No experiment found with name: '" + experimentName +
-                       "'. Please verify the workload details: name='" + workloadName +
-                       "', type='" + workloadType + "', namespace='" + namespace +
-                       "', container='" + container + "'\"}";
-            }
-            
-            // Use the matching experiment name
-            String matchingExperimentName = experiments.get(0).experiment_name();
-            
-            // Fetch recommendations for the matching experiment
-            log.info("Found matching experiment: {}. Fetching recommendations.", matchingExperimentName);
-            List<Recommendations> apiResponse = apiClient.getRecommendationsByExperiment(matchingExperimentName);
-            
-            if (apiResponse == null || apiResponse.isEmpty()) {
+            if (allRecommendations == null || allRecommendations.isEmpty()) {
                 return "{\"message\": \"No recommendations found in the system.\"}";
             }
 
-            // Since experiment name is already matched, there will be only one recommendation
-            Recommendations recommendations = apiResponse.get(0);
-            String experimentType = recommendations.experimentType();
-
-            // Process kubernetes objects directly - there will be only one k8s object
-            List<KubernetesObject> kubernetesObjects = Optional.ofNullable(recommendations.kubernetesObjects())
-                    .orElse(Collections.emptyList());
-
-            if (kubernetesObjects.isEmpty()) {
-                return "{\"message\": \"No kubernetes objects found for the matched experiment.\"}";
+            List<WorkloadPerformanceResult> matchingResults = new ArrayList<>();
+            
+            // Iterate through all recommendations to find matches
+            for (Recommendations recommendations : allRecommendations) {
+                String experimentName = recommendations.experimentName();
+                String experimentType = recommendations.experimentType();
+                
+                List<KubernetesObject> kubernetesObjects = Optional.ofNullable(recommendations.kubernetesObjects())
+                        .orElse(Collections.emptyList());
+                
+                for (KubernetesObject k8sObject : kubernetesObjects) {
+                    // Check if namespace filter is provided and matches
+                    if (namespace != null && !namespace.trim().isEmpty()
+                            && !k8sObject.namespace().equalsIgnoreCase(namespace.trim())) {
+                        continue; // Skip if namespace doesn't match
+                    }
+                    
+                    // Check containers for matching container name
+                    List<Container> containers = k8sObject.containers().orElse(Collections.emptyList());
+                    
+                    for (Container container : containers) {
+                        if (container.containerName().equalsIgnoreCase(containerName.trim())) {
+                            // Found a matching container
+                            WorkloadPerformanceResult result = RecommendationHelper.buildWorkloadPerformanceResult(
+                                experimentName,
+                                experimentType,
+                                k8sObject.namespace(),
+                                k8sObject.type(),
+                                k8sObject.name(),
+                                Optional.of(container.containerName()),
+                                container.recommendations()
+                            );
+                            
+                            if (result != null) {
+                                matchingResults.add(result);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (matchingResults.isEmpty()) {
+                String namespaceMsg = namespace != null && !namespace.trim().isEmpty()
+                    ? " in namespace '" + namespace + "'"
+                    : " across all namespaces";
+                return "{\"message\": \"No performance recommendations found for container '"
+                    + containerName + "'" + namespaceMsg + ".\"}";
             }
 
-            KubernetesObject k8sObject = kubernetesObjects.get(0);
-            
-            // Get the single container (experiment name already includes container name, so there's only one)
-            List<Container> containers = k8sObject.containers().orElse(Collections.emptyList());
-            
-            if (containers.isEmpty()) {
-                return "{\"message\": \"No container found in the matched experiment.\"}";
-            }
-            
-            Container containerObj = containers.get(0);
-            
-            WorkloadPerformanceResult result = RecommendationHelper.buildWorkloadPerformanceResult(
-                experimentName,
-                experimentType,
-                k8sObject.namespace(),
-                k8sObject.type(),
-                k8sObject.name(),
-                Optional.of(containerObj.containerName()),
-                containerObj.recommendations()
-            );
-            
-            if (result == null) {
-                return "{\"message\": \"No performance recommendations available for the specified container.\"}";
-            }
-
-            return objectMapper.writeValueAsString(result);
+            return objectMapper.writeValueAsString(matchingResults);
 
         } catch (JsonProcessingException e) {
             log.error("Failed to serialize recommendation data", e);
             return "{\"error\": \"Failed to serialize recommendation data to JSON: " + e.getMessage() + "\"}";
         } catch (Exception e) {
-            log.error("Failed to retrieve recommendations for workload", e);
+            log.error("Failed to retrieve recommendations for container", e);
             return "{\"error\": \"Failed to retrieve recommendations: " + e.getMessage() + "\"}";
         }
     }
