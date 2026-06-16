@@ -14,10 +14,6 @@ public interface KruizeApiClient {
     @GET
     @Path("/listExperiments")
     List<Experiment> getAllExperiments();
-    
-    @GET
-    @Path("/listExperiments")
-    List<Experiment> getExperimentsByName(@QueryParam("experiment_name") String experimentName);
 
     @GET
     @Path("/listRecommendations")
