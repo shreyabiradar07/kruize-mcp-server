@@ -190,6 +190,7 @@ public final class RecommendationApiResponseRecords {
             @JsonInclude(JsonInclude.Include.NON_NULL)
             String monitoringStartTime,
             @JsonProperty("recommendation_engines")
+            @JsonInclude(JsonInclude.Include.NON_EMPTY)
             Map<String, PerformanceEngineData> recommendationEngines,
             @JsonInclude(JsonInclude.Include.NON_EMPTY)
             Map<String, Notification> notifications

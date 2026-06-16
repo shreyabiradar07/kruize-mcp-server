@@ -309,22 +309,23 @@ public class RecommendationHelper {
             );
         }
 
-        // Build the recommendation_terms map with performance engine data
+        // Build the recommendation_terms map with performance engine data.
+        // If the performance engine is absent, preserve term-level notifications
+        // from the API response instead of returning an empty recommendation_engines object.
         Map<String, PerformanceRecommendationTerm> performanceTermsMap = recommendationTerms.entrySet().stream()
             .collect(Collectors.toMap(
                 Map.Entry::getKey,
                 termEntry -> {
                     RecommendationTerm recommendationTerm = termEntry.getValue();
-                    
+
                     Map<String, RecommendationEngine> engines = Optional.ofNullable(recommendationTerm.recommendationEngines())
                             .orElse(Collections.emptyMap());
                     RecommendationEngine performanceEngine = engines.get("performance");
-                    
-                    // Build performance engine data
+
                     Map<String, PerformanceEngineData> engineDataMap = new java.util.HashMap<>();
                     if (performanceEngine != null) {
                         EngineConfigVariation configVar = buildConfigAndVariation(performanceEngine);
-                        
+
                         PerformanceEngineData perfData = new PerformanceEngineData(
                             configVar.config(),
                             configVar.variation(),
@@ -332,18 +333,14 @@ public class RecommendationHelper {
                         );
                         engineDataMap.put("performance", perfData);
                     }
-                    
-                    // Filter term-level notifications to only include performance-related ones (code 112102)
+
                     Map<String, Notification> termNotifications = Optional.ofNullable(recommendationTerm.notifications())
-                        .orElse(Collections.emptyMap())
-                        .entrySet().stream()
-                        .filter(entry -> entry.getValue().code() == 112102)
-                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-                    
+                        .orElse(Collections.emptyMap());
+
                     return new PerformanceRecommendationTerm(
                         recommendationTerm.durationInHours(),
                         recommendationTerm.monitoringStartTime(),
-                        engineDataMap,
+                        engineDataMap.isEmpty() ? null : engineDataMap,
                         termNotifications
                     );
                 }
