@@ -87,7 +87,7 @@ npx @modelcontextprotocol/inspector http://localhost:8082/mcp/
 - `listAllRecommendations` - List resource optimization CPU/memory recommendations for all the containers
 - `getCostOptimizedRecommendations` - Get cost-optimized CPU/memory recommendations for a container. Optionally by namespace
 - `getPerformanceRecommendations` - Get performance-optimized CPU/memory recommendations for a container. Optionally by namespace
-- `getIdleWorkloads` - Get idle workloads (CPU < 1 millicore). Optionally with cost and performance recommendations
+- `getIdleWorkloads` - Get idle workloads (CPU usage < 1 millicore). Optionally with cost and performance recommendations
 
 ---
 

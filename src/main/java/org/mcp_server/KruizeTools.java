@@ -109,10 +109,10 @@ public class KruizeTools {
     }
 
     // Helper record to pass matching sources internally
-    @Tool(description = "Get idle workloads (CPU < 1 millicore). Optionally with cost and performance recommendations")
+    @Tool(description = "Get idle workloads (CPU usage < 1 millicore). Optionally with cost and performance recommendations")
     @Blocking
     public String getIdleWorkloads(
-            @ToolArg(description = "Include detailed recommendations")
+            @ToolArg(description = "Include cost and performance recommendations")
             boolean includeRecommendations) {
         try {
             // Get idle workloads and extract data using simple wrapper
