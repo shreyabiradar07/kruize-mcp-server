@@ -83,11 +83,11 @@ npx @modelcontextprotocol/inspector http://localhost:8082/mcp/
 
 ## MCP Tools
 
-- `listAllRecommendations` - Get all recommendations
-- `getCostOptimizedRecommendations` - Get cost recommendations for all the experiments
-- `listAllExperiments` - Get all experiments
-- `getIdleWorkloads` - Get idle workloads which have specific notification code 323001. Optionally includes cost recommendations data
-- `getPerformanceRecommendations` - Get performance recommendations for a specific container by name. Requires container name parameter and optionally accepts namespace parameter to filter results to a specific namespace
+- `listAllExperiments` - List all experiments
+- `listAllRecommendations` - List resource optimization CPU/memory recommendations for all the containers
+- `getCostOptimizedRecommendations` - Get cost-optimized CPU/memory recommendations for a container. Optionally by namespace
+- `getPerformanceRecommendations` - Get performance-optimized CPU/memory recommendations for a container. Optionally by namespace
+- `getIdleWorkloads` - Get idle workloads (CPU < 1 millicore). Optionally with cost and performance recommendations
 
 ---
 

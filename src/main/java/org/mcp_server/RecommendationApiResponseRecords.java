@@ -26,11 +26,12 @@ public final class RecommendationApiResponseRecords {
             Optional<String> containerName,
             @JsonProperty("experiment_name") String experimentName,
             @JsonProperty("experiment_type") String experimentType,
-            List<CostRecommendation> costRecommendations
+            @JsonProperty("recommendation_terms")
+            Map<String, RecommendationTermResult> recommendationTerms
     ) {}
 
-    // Final, clean output format for cost optimized recommendations
-    public record FinalCostResult(
+    // Final, clean output format for cost recommendations
+    public record CostEngineResult(
             String namespace,
             @JsonProperty("container_name")
             Optional<String> containerName,
@@ -46,8 +47,42 @@ public final class RecommendationApiResponseRecords {
             @JsonProperty("current")
             ResourceGroup currentUsage,
 
-            @JsonProperty("cost")
-            List<CostRecommendation> costRecommendations
+            @JsonProperty("recommendation_terms")
+            Map<String, RecommendationTermResult> recommendationTerms
+    ) {}
+
+    // Final, clean output format for performance recommendations
+    public record PerformanceEngineResult(
+            String namespace,
+            @JsonProperty("container_name")
+            Optional<String> containerName,
+
+            @JsonProperty("experiment_name")
+            String experimentName,
+
+            @JsonProperty("experiment_type")
+            String experimentType,
+
+            List<Notification> notifications,
+
+            @JsonProperty("current")
+            ResourceGroup currentUsage,
+
+            @JsonProperty("recommendation_terms")
+            Map<String, RecommendationTermResult> recommendationTerms
+    ) {}
+    
+    public record RecommendationTermResult(
+            @JsonProperty("duration_in_hours")
+            double durationInHours,
+            @JsonProperty("monitoring_start_time")
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            String monitoringStartTime,
+            @JsonProperty("recommendation_engines")
+            @JsonInclude(JsonInclude.Include.NON_EMPTY)
+            Map<String, RecommendationEngineData> recommendationEngines,
+            @JsonInclude(JsonInclude.Include.NON_EMPTY)
+            Map<String, Notification> notifications
     ) {}
 
 
@@ -56,25 +91,19 @@ public final class RecommendationApiResponseRecords {
             @JsonProperty("recommendation_terms")
             Map<String, RecommendationTerm> recommendationTerms
     ) {}
-
-    public record CostRecommendation(
-            String term,
-
-            @JsonProperty("duration_in_hours")
-            int durationInHours,
-            Optional<Object> config,  // Can be ResourceGroup or ResourceGroupNoCpu
-            Optional<Object> variation,  // Can be ResourceGroup or ResourceGroupNoCpu
-            Optional<List<Notification>> notifications
-    ) {}
-
-    public record PerformanceRecommendation(
-            String term,
-
-            @JsonProperty("duration_in_hours")
-            int durationInHours,
-            Optional<Object> config,  // Can be ResourceGroup or ResourceGroupNoCpu
-            Optional<Object> variation,  // Can be ResourceGroup or ResourceGroupNoCpu
-            List<Notification> notifications
+    
+    public record RecommendationEngineData(
+            @JsonProperty("pods_count")
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            Integer podsCount,
+            @JsonProperty("confidence_level")
+            double confidenceLevel,
+            @JsonInclude(JsonInclude.Include.NON_ABSENT)
+            Optional<Object> config,
+            @JsonInclude(JsonInclude.Include.NON_ABSENT)
+            Optional<Object> variation,
+            @JsonInclude(JsonInclude.Include.NON_EMPTY)
+            Map<String, Notification> notifications
     ) {}
 
     // --- Records for navigating the JSON structure ---
@@ -95,9 +124,15 @@ public final class RecommendationApiResponseRecords {
     public record ResourceGroupNoCpu(ResourceConfigNoCpu requests, ResourceConfigNoCpu limits) {}
 
     public record RecommendationEngine(
+            @JsonProperty("pods_count")
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            Integer podsCount,
+            @JsonProperty("confidence_level")
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            Double confidenceLevel,
             ResourceGroup config,
             ResourceGroup variation,
-             Map<String, Notification> notifications
+            Map<String, Notification> notifications
     ) {}
 
     public record RecommendationTerm(
@@ -146,60 +181,4 @@ public final class RecommendationApiResponseRecords {
             @JsonProperty("kubernetes_objects") List<KubernetesObject> kubernetesObjects
     ) {}
 
-    // Record for workload recommendation search results
-    public record WorkloadRecommendationResult(
-            @JsonProperty("experiment_name") String experimentName,
-            @JsonProperty("experiment_type") String experimentType,
-            String namespace,
-            @JsonProperty("workload_type") String workloadType,
-            @JsonProperty("workload_name") String workloadName,
-            @JsonProperty("container_name") Optional<String> containerName,
-            @JsonProperty("current")
-            @JsonInclude(JsonInclude.Include.NON_ABSENT)
-            Optional<ResourceGroup> currentUsage,
-            @JsonProperty("cost_recommendations")
-            @JsonInclude(JsonInclude.Include.NON_EMPTY)
-            List<CostRecommendation> costRecommendations,
-            @JsonProperty("performance_recommendations")
-            @JsonInclude(JsonInclude.Include.NON_EMPTY)
-            List<PerformanceRecommendation> performanceRecommendations,
-            List<Notification> notifications
-    ) {}
-
-    // Record for performance-only recommendation results
-    public record WorkloadPerformanceResult(
-            @JsonProperty("experiment_name") String experimentName,
-            @JsonProperty("experiment_type") String experimentType,
-            String namespace,
-            @JsonProperty("workload_type") String workloadType,
-            @JsonProperty("workload_name") String workloadName,
-            @JsonProperty("container_name") Optional<String> containerName,
-            @JsonProperty("current")
-            @JsonInclude(JsonInclude.Include.NON_ABSENT)
-            Optional<ResourceGroup> currentUsage,
-            @JsonProperty("recommendation_terms")
-            @JsonInclude(JsonInclude.Include.NON_EMPTY)
-            Map<String, PerformanceRecommendationTerm> recommendationTerms,
-            List<Notification> notifications
-    ) {}
-    
-    public record PerformanceRecommendationTerm(
-            @JsonProperty("duration_in_hours")
-            int durationInHours,
-            @JsonProperty("monitoring_start_time")
-            @JsonInclude(JsonInclude.Include.NON_NULL)
-            String monitoringStartTime,
-            @JsonProperty("recommendation_engines")
-            @JsonInclude(JsonInclude.Include.NON_EMPTY)
-            Map<String, PerformanceEngineData> recommendationEngines,
-            @JsonInclude(JsonInclude.Include.NON_EMPTY)
-            Map<String, Notification> notifications
-    ) {}
-    
-    public record PerformanceEngineData(
-            Optional<Object> config,  // Can be ResourceGroup or ResourceGroupNoCpu
-            Optional<Object> variation,  // Can be ResourceGroup or ResourceGroupNoCpu
-            @JsonInclude(JsonInclude.Include.NON_EMPTY)
-            Map<String, Notification> notifications
-    ) {}
 }
