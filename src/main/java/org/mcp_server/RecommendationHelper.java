@@ -287,7 +287,6 @@ public class RecommendationHelper {
         EngineConfigVariation configVar = buildConfigAndVariation(engine);
         return new RecommendationEngineData(
                 engine.podsCount(),
-                engine.confidenceLevel() != null ? engine.confidenceLevel() : 0.0,
                 configVar.config(),
                 configVar.variation(),
                 Optional.ofNullable(engine.notifications()).orElse(Collections.emptyMap())

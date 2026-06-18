@@ -96,8 +96,6 @@ public final class RecommendationApiResponseRecords {
             @JsonProperty("pods_count")
             @JsonInclude(JsonInclude.Include.NON_NULL)
             Integer podsCount,
-            @JsonProperty("confidence_level")
-            double confidenceLevel,
             @JsonInclude(JsonInclude.Include.NON_ABSENT)
             Optional<Object> config,
             @JsonInclude(JsonInclude.Include.NON_ABSENT)
@@ -127,9 +125,6 @@ public final class RecommendationApiResponseRecords {
             @JsonProperty("pods_count")
             @JsonInclude(JsonInclude.Include.NON_NULL)
             Integer podsCount,
-            @JsonProperty("confidence_level")
-            @JsonInclude(JsonInclude.Include.NON_NULL)
-            Double confidenceLevel,
             ResourceGroup config,
             ResourceGroup variation,
             Map<String, Notification> notifications
