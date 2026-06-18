@@ -257,6 +257,7 @@ public class RecommendationHelper {
         RecommendationTermResult build(
                 RecommendationTerm recommendationTerm,
                 Map<String, RecommendationEngineData> recommendationEngines,
+                PlotsData plots,
                 Map<String, Notification> notifications
         );
     }
@@ -343,6 +344,7 @@ public class RecommendationHelper {
             result.put(termEntry.getKey(), termResultBuilder.build(
                     recommendationTerm,
                     recommendationEngines,
+                    recommendationTerm.plots(),
                     termNotifications
             ));
         }
@@ -353,11 +355,13 @@ public class RecommendationHelper {
     private static RecommendationTermResult buildRecommendationTermResult(
             RecommendationTerm recommendationTerm,
             Map<String, RecommendationEngineData> recommendationEngines,
+            PlotsData plots,
             Map<String, Notification> notifications) {
         return new RecommendationTermResult(
                 recommendationTerm.durationInHours(),
                 recommendationTerm.monitoringStartTime(),
                 recommendationEngines,
+                plots,
                 notifications
         );
     }

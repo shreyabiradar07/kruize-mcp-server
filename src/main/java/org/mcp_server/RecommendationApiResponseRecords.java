@@ -1,5 +1,6 @@
 package org.mcp_server;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
@@ -72,6 +73,36 @@ public final class RecommendationApiResponseRecords {
             Map<String, RecommendationTermResult> recommendationTerms
     ) {}
     
+    // Records for plots data structure
+    public record MetricStats(
+            @JsonFormat(shape = JsonFormat.Shape.STRING)
+            double min,
+            @JsonFormat(shape = JsonFormat.Shape.STRING)
+            double q1,
+            @JsonFormat(shape = JsonFormat.Shape.STRING)
+            double median,
+            @JsonFormat(shape = JsonFormat.Shape.STRING)
+            double q3,
+            @JsonFormat(shape = JsonFormat.Shape.STRING)
+            double max,
+            String format
+    ) {}
+    
+    public record TimestampMetrics(
+            @JsonProperty("cpuUsage")
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            MetricStats cpuUsage,
+            @JsonProperty("memoryUsage")
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            MetricStats memoryUsage
+    ) {}
+    
+    public record PlotsData(
+            int datapoints,
+            @JsonProperty("plots_data")
+            Map<String, TimestampMetrics> plotsData
+    ) {}
+    
     public record RecommendationTermResult(
             @JsonProperty("duration_in_hours")
             double durationInHours,
@@ -81,6 +112,8 @@ public final class RecommendationApiResponseRecords {
             @JsonProperty("recommendation_engines")
             @JsonInclude(JsonInclude.Include.NON_EMPTY)
             Map<String, RecommendationEngineData> recommendationEngines,
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            PlotsData plots,
             @JsonInclude(JsonInclude.Include.NON_EMPTY)
             Map<String, Notification> notifications
     ) {}
@@ -136,6 +169,8 @@ public final class RecommendationApiResponseRecords {
             @JsonInclude(JsonInclude.Include.NON_NULL)
             String monitoringStartTime,
             @JsonProperty("recommendation_engines") Map<String, RecommendationEngine> recommendationEngines,
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            PlotsData plots,
             @JsonInclude(JsonInclude.Include.NON_EMPTY)
             Map<String, Notification> notifications
     ) {}
