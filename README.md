@@ -1,6 +1,6 @@
 # Kruize MCP Server
 
-MCP Server providing tools for Kruize recommendations and experiments.
+A cloud-native MCP server designed to act as a bridge between AI models/Agentic workflows and the Kruize recommendations engine. Kruize MCP server exposes Kubernetes resource recommendation data, including idle workload detection, as simple, actionable tools for AI models.
 
 ## Quick Start
 
@@ -83,10 +83,11 @@ npx @modelcontextprotocol/inspector http://localhost:8082/mcp/
 
 ## MCP Tools
 
-- `listAllRecommendations` - Get all recommendations
-- `getCostOptimizedRecommendations` - Get cost recommendations for all the experiments
-- `listAllExperiments` - Get all experiments
-- `getIdleWorkloads` - Get idle workloads which have specific notification code 323001. Optionally includes cost recommendations data
+- `listAllExperiments` - List all experiments
+- `listAllRecommendations` - List resource optimization CPU/memory recommendations for all the containers
+- `getCostOptimizedRecommendations` - Get cost-optimized CPU/memory recommendations for a container. Optionally by namespace
+- `getPerformanceRecommendations` - Get performance-optimized CPU/memory recommendations for a container. Optionally by namespace
+- `getIdleWorkloads` - Get idle workloads (CPU usage < 1 millicore). Optionally with cost and performance recommendations
 
 ---
 

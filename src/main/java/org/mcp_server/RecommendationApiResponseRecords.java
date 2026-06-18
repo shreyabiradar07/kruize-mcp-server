@@ -1,5 +1,7 @@
 package org.mcp_server;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 import java.util.Map;
@@ -25,11 +27,12 @@ public final class RecommendationApiResponseRecords {
             Optional<String> containerName,
             @JsonProperty("experiment_name") String experimentName,
             @JsonProperty("experiment_type") String experimentType,
-            List<CostRecommendation> costRecommendations
+            @JsonProperty("recommendation_terms")
+            Map<String, RecommendationTermResult> recommendationTerms
     ) {}
 
-    // Final, clean output format for cost optimized recommendations
-    public record FinalCostResult(
+    // Final, clean output format for cost recommendations
+    public record CostEngineResult(
             String namespace,
             @JsonProperty("container_name")
             Optional<String> containerName,
@@ -45,8 +48,74 @@ public final class RecommendationApiResponseRecords {
             @JsonProperty("current")
             ResourceGroup currentUsage,
 
-            @JsonProperty("cost")
-            List<CostRecommendation> costRecommendations
+            @JsonProperty("recommendation_terms")
+            Map<String, RecommendationTermResult> recommendationTerms
+    ) {}
+
+    // Final, clean output format for performance recommendations
+    public record PerformanceEngineResult(
+            String namespace,
+            @JsonProperty("container_name")
+            Optional<String> containerName,
+
+            @JsonProperty("experiment_name")
+            String experimentName,
+
+            @JsonProperty("experiment_type")
+            String experimentType,
+
+            List<Notification> notifications,
+
+            @JsonProperty("current")
+            ResourceGroup currentUsage,
+
+            @JsonProperty("recommendation_terms")
+            Map<String, RecommendationTermResult> recommendationTerms
+    ) {}
+    
+    // Records for plots data structure
+    public record MetricStats(
+            @JsonFormat(shape = JsonFormat.Shape.STRING)
+            double min,
+            @JsonFormat(shape = JsonFormat.Shape.STRING)
+            double q1,
+            @JsonFormat(shape = JsonFormat.Shape.STRING)
+            double median,
+            @JsonFormat(shape = JsonFormat.Shape.STRING)
+            double q3,
+            @JsonFormat(shape = JsonFormat.Shape.STRING)
+            double max,
+            String format
+    ) {}
+    
+    public record TimestampMetrics(
+            @JsonProperty("cpuUsage")
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            MetricStats cpuUsage,
+            @JsonProperty("memoryUsage")
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            MetricStats memoryUsage
+    ) {}
+    
+    public record PlotsData(
+            int datapoints,
+            @JsonProperty("plots_data")
+            Map<String, TimestampMetrics> plotsData
+    ) {}
+    
+    public record RecommendationTermResult(
+            @JsonProperty("duration_in_hours")
+            double durationInHours,
+            @JsonProperty("monitoring_start_time")
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            String monitoringStartTime,
+            @JsonProperty("recommendation_engines")
+            @JsonInclude(JsonInclude.Include.NON_EMPTY)
+            Map<String, RecommendationEngineData> recommendationEngines,
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            PlotsData plots,
+            @JsonInclude(JsonInclude.Include.NON_EMPTY)
+            Map<String, Notification> notifications
     ) {}
 
 
@@ -55,31 +124,55 @@ public final class RecommendationApiResponseRecords {
             @JsonProperty("recommendation_terms")
             Map<String, RecommendationTerm> recommendationTerms
     ) {}
-
-    public record CostRecommendation(
-            String term,
-
-            @JsonProperty("duration_in_hours")
-            int durationInHours,
-            Optional<ResourceGroup> config,
-            Optional<ResourceGroup> variation,
-            Optional<List<Notification>> notifications
+    
+    public record RecommendationEngineData(
+            @JsonProperty("pods_count")
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            Integer podsCount,
+            @JsonInclude(JsonInclude.Include.NON_ABSENT)
+            Optional<Object> config,
+            @JsonInclude(JsonInclude.Include.NON_ABSENT)
+            Optional<Object> variation,
+            @JsonInclude(JsonInclude.Include.NON_EMPTY)
+            Map<String, Notification> notifications
     ) {}
 
     // --- Records for navigating the JSON structure ---
     public record ResourceMetric(double amount, String format) {}
-    public record ResourceConfig(ResourceMetric cpu, ResourceMetric memory) {}
-    public record ResourceGroup(ResourceConfig requests, ResourceConfig limits) {}
+    
+    public record ResourceConfig(
+            @JsonInclude(JsonInclude.Include.NON_NULL) ResourceMetric cpu,
+            @JsonInclude(JsonInclude.Include.NON_NULL) ResourceMetric memory
+    ) {}
+    
+    public record ResourceGroup(
+            @JsonInclude(JsonInclude.Include.NON_NULL) ResourceConfig requests,
+            @JsonInclude(JsonInclude.Include.NON_NULL) ResourceConfig limits
+    ) {}
+    
+    // Record for ResourceConfig without CPU (for notification 323001)
+    public record ResourceConfigNoCpu(ResourceMetric memory) {}
+    public record ResourceGroupNoCpu(ResourceConfigNoCpu requests, ResourceConfigNoCpu limits) {}
 
     public record RecommendationEngine(
+            @JsonProperty("pods_count")
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            Integer podsCount,
             ResourceGroup config,
             ResourceGroup variation,
-             Map<String, Notification> notifications
+            Map<String, Notification> notifications
     ) {}
 
     public record RecommendationTerm(
             @JsonProperty("duration_in_hours") int durationInHours,
-            @JsonProperty("recommendation_engines") Map<String, RecommendationEngine> recommendationEngines
+            @JsonProperty("monitoring_start_time")
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            String monitoringStartTime,
+            @JsonProperty("recommendation_engines") Map<String, RecommendationEngine> recommendationEngines,
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            PlotsData plots,
+            @JsonInclude(JsonInclude.Include.NON_EMPTY)
+            Map<String, Notification> notifications
     ) {}
 
     public record Notification(String type, String message, int code) {}
@@ -117,4 +210,5 @@ public final class RecommendationApiResponseRecords {
             @JsonProperty("experiment_type") String experimentType,
             @JsonProperty("kubernetes_objects") List<KubernetesObject> kubernetesObjects
     ) {}
+
 }
