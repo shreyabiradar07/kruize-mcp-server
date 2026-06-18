@@ -2,23 +2,32 @@
 
 ## What is Kruize?
 
-Kruize is a Kubernetes resource optimization engine that analyzes workload performance and provides intelligent recommendations for right-sizing CPU and memory resources. It helps reduce cloud costs while maintaining application performance by providing container right-sizing recommendations in the form of CPU and memory requests and limits.
+Kruize is a Kubernetes resource optimization engine that analyzes workload performance and provides intelligent recommendations for right-sizing CPU and memory resources, as well as runtime and framework configurations. It helps reduce cloud costs while maintaining application performance by providing:
+- **Container right-sizing recommendations**: CPU and memory requests and limits
+- **Runtime recommendations**: JVM settings (GC policies, heap sizes) for Java applications
+- **Framework recommendations**: Framework-specific parameters (e.g., Quarkus thread pools)
+- **Box plots data**: Detailed usage analysis and visualization
 
 ## How Kruize Works
 
-Kruize provides container right-sizing recommendations based on resource usage patterns:
+Kruize provides comprehensive optimization recommendations based on resource usage patterns:
 - Recommendations are based on resource usage over **24 hours (short term)**, **7 days (medium term)**, and **15 days (long term)**
 - Provides both **cost-optimized** and **performance-optimized** suggestions for each term on a per-container basis
 - Request and limit values for both CPU and memory are set to be the same for consistency
+- Runtime and framework recommendations are included alongside CPU/memory recommendations when prerequisites are met:
+  - Application metrics accessible via Prometheus or Thanos
+  - Application exposes necessary runtime metrics
+  - For Quarkus: Label `com.redhat.component-name: "Quarkus"` added to Deployment or Pod
 
 ## Key Concepts
 
 ### Experiments
-Kruize monitors Kubernetes workloads through "experiments" that collect metrics over time. Each experiment tracks:
-- Container resource usage (CPU, memory)
-- Performance characteristics
-- Cost implications
-- Optimization opportunities
+
+An experiment is a JSON specification that tells Kruize which Kubernetes workloads to monitor and optimize. It includes workload details (namespace, deployment, containers), measurement duration, and recommendation thresholds.
+
+Kruize monitors these workloads through experiments that collect metrics over time, tracking container resource usage (CPU, memory), runtime metrics (JVM, framework-specific), and optimization opportunities.
+
+**Note**: Runtime recommendations are only available for container experiments and require proper metric exposure.
 
 ### Recommendation Engines
 
@@ -44,14 +53,16 @@ Kruize provides recommendations across three time horizons:
 - **Medium-term**: Based on 7 days of historical data - Balanced approach with better reliability
 - **Long-term**: Based on 15 days of historical data - Most reliable recommendations
 
-Longer monitoring periods generally provide higher confidence recommendations.
+Longer monitoring periods generally provide more reliable recommendations with better understanding of usage patterns.
 
-### Confidence Levels
+### Box Plots Data
 
-Each recommendation includes a confidence score (0.0 to 1.0):
-- **0.8-1.0**: High confidence - Safe to implement
-- **0.5-0.8**: Medium confidence - Review carefully
-- **0.0-0.5**: Low confidence - Needs more monitoring data
+Each recommendation includes detailed box plots data that visualizes resource usage patterns:
+- **Min/Max Values**: Shows the range of resource usage
+- **Median**: Indicates the typical usage level
+- **Quartiles**: Helps understand usage distribution
+- **Format**: Provides statistical insights into CPU and memory consumption patterns
+- **Usage**: Essential for validating recommendation reliability and understanding workload behavior
 
 ### Idle Workloads
 
@@ -68,7 +79,8 @@ Kruize recommendations include:
 - **Requests**: Minimum guaranteed resources (affects scheduling)
 - **Limits**: Maximum allowed resources (affects throttling)
 - **Unified Values**: Request and limit values for both CPU and memory are set to be the same
-- **Variation**: Expected fluctuation range for capacity planning
+- **Box Plots**: Statistical visualization of usage patterns including min, max, median, and quartiles
+- **Runtime Parameters**: JVM and framework configuration recommendations (when applicable)
 
 ### Warnings and Notifications
 
@@ -101,3 +113,21 @@ Kruize displays warnings in certain conditions:
 - Balancing cost and performance
 - Comparing trade-offs
 - Making informed decisions about resource allocation
+
+## Runtime and Framework Recommendations
+
+In addition to CPU and memory recommendations, Kruize provides runtime and framework optimization when the prerequisites mentioned above are met.
+
+### Supported Runtime Layers
+
+| Layer Type | Supported Stacks | Primary Tunables |
+|------------|------------------|------------------|
+| **Runtime** | OpenJDK/Hotspot, IBM Semeru/OpenJ9 | GCPolicy, MaxRAMPercentage |
+| **Framework** | Quarkus | quarkus.thread-pool.core-threads |
+
+### How It Works
+
+1. During experiment creation, Kruize automatically detects application layers (e.g., Hotspot, Semeru, Quarkus)
+2. Kruize analyzes runtime-specific metrics alongside CPU/memory usage
+3. Recommendations include a `runtime_recommendations` section with optimized parameters
+4. Apply recommendations as environment variables or configuration changes
