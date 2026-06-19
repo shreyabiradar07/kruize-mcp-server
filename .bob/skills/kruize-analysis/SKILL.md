@@ -9,7 +9,7 @@ Comprehensive workflow for analyzing Kubernetes resource optimization data from 
 
 ## Prerequisites
 
-Review `kruize-reference.md` in this skill directory for foundational concepts about Kruize, cost vs performance optimization, confidence levels, and resource configuration.
+Review [`kruize-reference.md`](.bob/skills/kruize-analysis/kruize-reference.md) in this skill directory for foundational concepts about Kruize, cost vs performance optimization, box plots data, resource configuration, and runtime/framework recommendations.
 
 ## Available MCP Tools
 
@@ -21,46 +21,52 @@ Review `kruize-reference.md` in this skill directory for foundational concepts a
 
 ## Workflow 1: Cost Optimization Analysis
 
-**Goal**: Identify and prioritize cost-saving opportunities
+**Goal**: Analyze cost-saving opportunities for a specific container
 
-### Step 1: Fetch Cost Recommendations
+### Step 1: Fetch Cost Recommendations for Container
+
 ```
 Use: getCostOptimizedRecommendations
-Parameters: containerName (required), namespace (optional)
+Parameters:
+  - containerName (required)
+  - namespace (optional)
 ```
 
-### Step 2: Identify High-Value Opportunities
+### Step 2: Analyze Container's Optimization Potential
 
-Focus on workloads with:
-- Large gap between current and recommended resources
-- High confidence levels (>0.8)
-- Long monitoring duration
-- Idle workload notifications (code 323001)
+Review the container's recommendation data for:
+- Gap between current and recommended resources
+- Monitoring duration confidence
+- Idle workload notification (code 323001) if present
+- Box plots showing usage patterns and consistency
 
-### Step 3: Calculate Savings Potential
+### Step 3: Analyze Resource Reduction Potential
 
-For each workload:
+For the container:
 - Compare current vs recommended CPU/memory
 - Calculate percentage reduction
-- Estimate monthly cost savings
-- Aggregate total savings across workloads
+- Review box plots for usage patterns and variations
+- Assess consistency of resource usage over time
 
-### Step 4: Prioritize by Risk and Impact
+### Step 4: Assess Risk and Impact
 
 **Immediate Action (High Priority):**
-- High confidence (>0.8) + significant savings
-- Idle workloads
-- Non-critical workloads
+- Long monitoring duration + significant resource reduction
+- Idle container (< 1 millicore CPU usage)
+- Non-critical container
+- Box plots showing stable, consistent patterns
 
 **Planned Implementation (Medium Priority):**
-- Medium confidence (0.5-0.8)
-- Moderate savings
+- Moderate monitoring duration
+- Moderate resource reduction
 - Requires stakeholder review
+- Box plots showing some variation
 
 **Monitor Further (Low Priority):**
-- Low confidence (<0.5)
-- Minimal savings
-- Recently deployed
+- Short monitoring duration
+- Minimal resource reduction
+- Recently deployed container
+- Box plots showing high variation or insufficient data
 
 ### Step 5: Generate Report
 
@@ -74,16 +80,29 @@ For each workload:
 
 ### Recommendations by Term (60th Percentile CPU)
 **Short-term (24 hours)**:
-- CPU: [cores] - Confidence: [level] - Savings: [%]
+- CPU: [cores] - Reduction: [%]
 - Memory: [recommended value]
+- Box Plots: [min/max/median values]
 
 **Medium-term (7 days)**:
-- CPU: [cores] - Confidence: [level] - Savings: [%]
+- CPU: [cores] - Reduction: [%]
 - Memory: [recommended value]
+- Box Plots: [min/max/median values]
 
 **Long-term (15 days)**:
-- CPU: [cores] - Confidence: [level] - Savings: [%]
+- CPU: [cores] - Reduction: [%]
 - Memory: [recommended value]
+- Box Plots: [min/max/median values]
+
+### Runtime Recommendations (if available)
+**JVM Settings** (OpenJDK/Hotspot, IBM Semeru/OpenJ9):
+- GCPolicy: [recommended value]
+- MaxRAMPercentage: [recommended value]
+
+**Framework Settings** (Quarkus):
+- quarkus.thread-pool.core-threads: [recommended value]
+
+*Note: Runtime recommendations appear automatically when application metrics are available via Prometheus/Thanos and proper labels are set (e.g., `com.redhat.component-name: "Quarkus"` for Quarkus apps)*
 
 ### Priority: [High/Medium/Low]
 
@@ -93,48 +112,58 @@ For each workload:
 3. [Rollback plan if needed]
 ```
 
-## Workflow 2: Idle Workload Detection
+## Workflow 2: Idle Container Detection
 
-**Goal**: Identify and eliminate wasted resources
+**Goal**: Identify if a specific container is wasting resources
 
-### Step 1: Detect Idle Workloads
+### Step 1: Check Container for Idle Status
+
+**Option A - Check Specific Container:**
+```
+Use: getCostOptimizedRecommendations
+Parameters: containerName (required), namespace (optional)
+Look for: Notification code 323001 in response
+```
+
+**Option B - List All Idle Containers:**
 ```
 Use: getIdleWorkloads
 Parameters: includeRecommendations (true for detailed analysis, false for summary)
+Then: Identify your target container in the results
 ```
 
-**Understanding Idle Workloads:**
+**Understanding Idle Containers:**
 - Defined as containers with CPU usage **< 1 millicore (0.001 cores)** in the observed term
 - **No CPU recommendation** can be generated for idle containers
-- Only **memory recommendations** are provided for idle workloads
+- Only **memory recommendations** are provided for idle containers
 - These represent the highest cost-saving opportunities
 
-### Step 2: Categorize by Severity
+### Step 2: Assess Severity
 
 **Critical (Immediate Action):**
 - Long monitoring duration (>7 days)
-- High confidence (>0.8)
 - Consistently idle across all terms
 - CPU usage < 1 millicore throughout observation period
+- Box plots confirming minimal CPU activity
 
 **Medium (Review Required):**
 - Moderate duration (3-7 days)
-- Medium confidence (0.5-0.8)
 - May have periodic usage
 - Intermittent idle periods
+- Box plots showing occasional spikes
 
 **Low (Continue Monitoring):**
 - Short duration (<3 days)
-- Low confidence (<0.5)
 - Recently deployed
-- Insufficient data for confident assessment
+- Insufficient data for assessment
+- Box plots showing high variation or limited data points
 
-### Step 3: Determine Actions
+### Step 3: Determine Action for Container
 
-**For Critical Idle Workloads:**
+**For Critical Idle Container:**
 - Decommission if no business justification
 - Scale to zero with event-driven scaling (HPA/KEDA)
-- Consolidate with similar workloads
+- Consolidate with similar containers
 - Archive if data retention needed
 
 **For Medium Priority:**
@@ -148,71 +177,86 @@ Parameters: includeRecommendations (true for detailed analysis, false for summar
 - Document business purpose
 - Schedule follow-up review
 
-### Step 4: Calculate Impact
+### Step 4: Generate Container Report
 
 ```
-## Idle Workload Report
+## Idle Container Report: [Container Name]
 
-### Summary
-- Total Idle Workloads: [count]
-
-### Critical Priority ([count] workloads)
-[List with namespace, container, duration, confidence]
+### Container Details
+- Namespace: [namespace]
+- Monitoring Duration: [hours/days]
+- Severity: [Critical/Medium/Low]
 
 ### Key Indicators
+- CPU Usage: < 1 millicore (idle)
 - CPU Recommendation: Not available (< 1 millicore usage)
-- Memory Recommendation: Available (based on observed usage + buffer)
+- Memory Recommendation: [value] (based on observed usage + buffer)
+- Box Plots: [Show minimal CPU activity and memory usage patterns]
 
-### Recommended Actions
-1. [Decommission list with justification]
-2. [Scale-to-zero candidates]
-3. [Further investigation needed]
+### Recommended Action
+[Specific action: decommission/scale-to-zero/investigate/monitor]
 
 ### Risk Mitigation
-- [Backup/rollback plans]
-- [Stakeholder communication]
-- [Validation of business requirements]
+- [Backup/rollback plan]
+- [Stakeholder communication needed]
+- [Business requirement validation]
 ```
 
-## Workflow 3: Performance Optimization Analysis
+## Workflow 3: Stability Performance Optimization Analysis
+ Add guardrails to ignore rest of tools (no idle info to be exposed or considered)
 
-**Goal**: Ensure adequate resources for performance-critical workloads
+**Goal**: Ensure adequate resources for a performance-critical container
 
-### Step 1: Fetch Performance Recommendations
+### Step 1: Fetch Performance Recommendations for Container
 ```
 Use: getPerformanceOptimizedRecommendations
-Parameters: containerName (required), namespace (optional)
+Parameters:
+  - containerName (required)
+  - namespace (optional)
 ```
 
-### Step 2: Identify Under-Provisioned Workloads
+### Step 2: Check for Idle Container Status
 
-Look for:
+**IMPORTANT**: Before proceeding with performance optimization, verify the container is not idle:
+- Check response for notification code 323001 (idle workload indicator)
+- If container has CPU usage < 1 millicore, it is idle
+- **Idle containers cannot receive CPU recommendations** and should not be performance-optimized
+- If idle, refer to Workflow 2 (Idle Container Detection) instead
+
+### Step 3: Identify Under-Provisioning
+
+Analyze the container for:
 - Current resources below recommended levels
-- High confidence recommendations
-- Performance-critical applications
-- SLA-sensitive workloads
+- Performance-critical application
+- SLA-sensitive workload
+- Box plots showing resource constraints or throttling
 
-### Step 3: Assess Performance Risk
+### Step 4: Assess Performance Risk
 
 **High Risk (Immediate Action):**
 - Significant under-provisioning
-- High confidence recommendations
-- Production workloads with SLAs
+- Production container with SLAs
+- Box plots showing frequent resource limits being hit
 
 **Medium Risk (Planned Upgrade):**
 - Moderate under-provisioning
-- Medium confidence
-- Non-critical but important workloads
+- Non-critical but important container
+- Box plots showing occasional resource constraints
 
 **Low Risk (Monitor):**
 - Minimal under-provisioning
-- Low confidence
-- Development/test environments
+- Development/test environment
+- Box plots showing adequate headroom
 
-### Step 4: Generate Performance Report
+### Step 5: Generate Performance Report
 
 ```
 ## Performance Optimization: [Container/Namespace]
+
+### Idle Status Check
+- Notification 323001: [Present/Not Present]
+- Container Status: [Active/Idle]
+- **Note**: If idle (CPU < 1 millicore), performance optimization is not applicable
 
 ### Current Allocation
 - CPU: [requests/limits]
@@ -220,16 +264,29 @@ Look for:
 
 ### Performance Recommendations (98th Percentile CPU)
 **Short-term (24 hours)**:
-- CPU: [cores] - Uses 98th percentile - Confidence: [level]
+- CPU: [cores] - Uses 98th percentile
 - Memory: [recommended value]
+- Box Plots: [min/max/median values]
 
 **Medium-term (7 days)**:
-- CPU: [cores] - Uses 98th percentile - Confidence: [level]
+- CPU: [cores] - Uses 98th percentile
 - Memory: [recommended value]
+- Box Plots: [min/max/median values]
 
 **Long-term (15 days)**:
-- CPU: [cores] - Uses 98th percentile - Confidence: [level]
+- CPU: [cores] - Uses 98th percentile
 - Memory: [recommended value]
+- Box Plots: [min/max/median values]
+
+### Runtime Recommendations (if available)
+**JVM Settings** (OpenJDK/Hotspot, IBM Semeru/OpenJ9):
+- GCPolicy: [recommended value]
+- MaxRAMPercentage: [recommended value]
+
+**Framework Settings** (Quarkus):
+- quarkus.thread-pool.core-threads: [recommended value]
+
+*Note: Runtime recommendations appear automatically when application metrics are available via Prometheus/Thanos and proper labels are set*
 
 ### Risk Assessment: [High/Medium/Low]
 
@@ -241,12 +298,17 @@ Look for:
 
 ## Workflow 4: Balanced Cost vs Performance Analysis
 
-**Goal**: Find optimal balance between cost and performance
+**Goal**: Find optimal balance between cost and performance for a container
 
-### Step 1: Fetch Both Recommendations
+### Step 1: Fetch Both Recommendations for Container
 ```
-Use: getCostOptimizedRecommendations AND getPerformanceOptimizedRecommendations
-For same container/namespace
+Use: getCostOptimizedRecommendations
+Parameters: containerName (required), namespace (optional)
+
+AND
+
+Use: getPerformanceOptimizedRecommendations
+Parameters: containerName (required), namespace (optional)
 ```
 
 ### Step 2: Compare Recommendations
@@ -256,22 +318,22 @@ Analyze the gap between:
 - Performance-optimized resources (maximum performance)
 - Current allocation
 
-### Step 3: Determine Optimal Strategy
+### Step 3: Determine Optimal Strategy for Container
 
-**Cost-Focused Workloads:**
-- Non-critical applications
-- Development/test environments
-- Batch processing jobs
+**Cost-Focused Container:**
+- Non-critical application
+- Development/test environment
+- Batch processing job
 - Use cost recommendations
 
-**Performance-Focused Workloads:**
-- User-facing applications
+**Performance-Focused Container:**
+- User-facing application
 - Real-time processing
-- SLA-critical services
+- SLA-critical service
 - Use performance recommendations
 
 **Balanced Approach:**
-- Important but cost-conscious workloads
+- Important but cost-conscious container
 - Choose medium-term recommendations
 - Consider variation ranges
 - Implement with monitoring
@@ -287,23 +349,34 @@ Analyze the gap between:
 ### Cost-Optimized Option (60th Percentile CPU)
 - CPU: [cores] - Uses 60th percentile for cost savings
 - Memory: [recommended value]
-- Savings: [%]
-- Confidence: [level]
+- Reduction: [%]
 - Risk: [assessment]
+- Box Plots: [usage patterns and variations]
 - Example: 93% CPU reduction, 53% memory reduction possible
 
 ### Performance-Optimized Option (98th Percentile CPU)
 - CPU: [cores] - Uses 98th percentile for reliability
 - Memory: [recommended value]
-- Additional Cost: [%]
-- Confidence: [level]
+- Increase: [%]
 - Benefit: [assessment]
+- Box Plots: [usage patterns and headroom]
 - Example: 41% CPU reduction, 53% memory reduction while maintaining performance
+
+### Runtime Recommendations (if available in either option)
+**JVM Settings**:
+- GCPolicy: [recommended value]
+- MaxRAMPercentage: [recommended value]
+
+**Framework Settings** (Quarkus):
+- quarkus.thread-pool.core-threads: [recommended value]
+
+*Note: Runtime recommendations are included automatically when prerequisites are met (application metrics via Prometheus/Thanos, proper labels)*
 
 ### Key Differences
 - **CPU Strategy**: Cost uses 60th percentile vs Performance uses 98th percentile
 - **Memory Strategy**: Both use same formula (prevents OOM scenarios)
 - **Request/Limit**: Both set to same value for consistency
+- **Runtime Settings**: Same recommendations for both cost and performance options
 
 ### Recommendation: [Cost/Performance/Balanced]
 Justification: [Why this option is best for this workload]
@@ -312,77 +385,81 @@ Justification: [Why this option is best for this workload]
 [Specific steps based on chosen strategy]
 ```
 
-## Workflow 5: Experiment Tracking and Review
+## Workflow 5: Container Experiment Tracking
 
-**Goal**: Monitor optimization experiments and track results
+**Goal**: Monitor optimization experiment for a specific container
 
 ### Step 1: List All Experiments
 ```
 Use: listAllExperiments
 Returns: All active and completed experiments
+Then: Identify your target container's experiment
 ```
 
-### Step 2: Analyze Experiment Status
+### Step 2: Analyze Container's Experiment Status
 
-Review each experiment:
+Review the experiment:
 - Experiment name and type
 - Current status
 - Monitoring duration
 - Target cluster
 
-### Step 3: Identify Actionable Experiments
+### Step 3: Determine if Container is Ready for Optimization
 
 **Ready for Action:**
-- Completed experiments with high confidence
-- Long-running experiments with stable data
-- Experiments showing clear optimization opportunities
+- Completed experiment with sufficient monitoring duration
+- Long-running experiment with stable data
+- Experiment showing clear optimization opportunities
+- Box plots indicating consistent usage patterns
 
 **Needs More Time:**
-- Recently started experiments
-- Low confidence scores
+- Recently started experiment
 - Insufficient monitoring duration
+- Box plots showing high variation or limited data
 
-### Step 4: Generate Experiment Summary
+### Step 4: Generate Container Experiment Report
 
 ```
-## Kruize Experiment Summary
+## Container Experiment Report: [Container Name]
 
-### Active Experiments: [count]
-### Completed Experiments: [count]
+### Experiment Details
+- Experiment Name: [name]
+- Status: [active/completed]
+- Monitoring Duration: [hours/days]
+- Target Cluster: [cluster name]
 
-### Ready for Recommendation Analysis ([count])
-[List experiments with sufficient monitoring duration for separate recommendation lookup]
-
-### Monitoring in Progress ([count])
-[List experiments needing more data]
+### Readiness Assessment
+[Ready for optimization / Needs more monitoring time]
 
 ### Recommended Next Steps
-1. [Fetch recommendations separately for relevant experiments]
-2. [Extend monitoring for experiments with insufficient data]
-3. [Review and archive old experiments]
+1. [Fetch cost/performance recommendations for this container]
+2. [Extend monitoring if insufficient data]
+3. [Implement recommendations if ready]
 ```
 
 ## Best Practices
 
 ### General Guidelines
-- Always check confidence levels before implementing changes
-- Start with highest confidence, highest impact workloads
+- Review box plots to understand usage patterns before implementing changes
+- Start with workloads showing stable patterns and significant resource reduction potential
 - Implement changes incrementally with monitoring
 - Document all optimization decisions and rationale
 - Communicate with application owners before changes
 - Plan rollback procedures for production workloads
 
 ### Cost Optimization
-- Prioritize idle workloads first (highest ROI)
+- Prioritize idle workloads first (highest resource reduction potential)
 - Use long-term recommendations for production
 - Include safety margins for resource limits
-- Track actual vs projected savings
+- Review box plots to validate consistent low usage patterns
+- Check for runtime recommendations (JVM/framework settings) alongside CPU/memory optimizations
 
 ### Performance Optimization
 - Never compromise SLAs for cost savings
 - Implement during maintenance windows
 - Monitor application metrics after changes
 - Consider peak load requirements
+- Apply runtime recommendations (GC policies, thread pools) to complement resource increases
 
 ### Risk Management
 - Test in non-production first
@@ -396,35 +473,44 @@ Review each experiment:
 - Track optimization success rates
 - Adjust strategies based on results
 - Share learnings across teams
-- Update confidence thresholds based on experience
+- Analyze box plots trends over time to refine recommendations
 
 ## Special Considerations
 
-### Notification 323001 (Idle Workloads)
+### Notification 323001 (Idle Container)
 - Highest priority for cost savings
 - **Definition**: CPU usage < 1 millicore (0.001 cores) in observed term
 - **Warning Icon**: Displayed in Kruize UI for idle containers
-- **CPU Recommendation**: Cannot be generated for idle workloads
+- **CPU Recommendation**: Cannot be generated for idle containers
 - **Memory Recommendation**: Still provided using standard formula
 - Consider decommissioning or scaling to zero
 - Validate business justification before action
 - Review box plots to confirm consistent idle state
 
-### Low Confidence Recommendations
+### Container with High Variation
 - Extend monitoring period (aim for 15-day long-term data)
 - Implement cautiously with close monitoring
 - Start with short-term recommendations (24 hours)
 - Validate with application performance data
-- Review box plots for usage patterns and variations
+- Review box plots for usage patterns and variations to understand container behavior
 
-### Seasonal Workloads
+### Seasonal Container
 - Consider usage patterns over time
 - May appear idle during off-season
 - Review historical data before decommissioning
 - Implement auto-scaling instead of static sizing
 
-### Multi-Cluster Environments
-- Use namespace filtering for targeted analysis
-- Compare recommendations across clusters
-- Identify cluster-specific optimization opportunities
-- Standardize resource allocation policies
+### Runtime and Framework Recommendations
+- **Automatic inclusion**: Runtime recommendations appear in the same response as CPU/memory recommendations when prerequisites are met
+- **Prerequisites**: Application metrics via Prometheus/Thanos, proper metric exposure, and labels (e.g., `com.redhat.component-name: "Quarkus"`)
+- **Supported stacks**: OpenJDK/Hotspot, IBM Semeru/OpenJ9 (JVM), Quarkus (framework)
+- **Container experiments only**: Runtime recommendations are not available for namespace-level experiments
+- **Implementation order**: Apply CPU/memory changes first, then runtime configurations
+- **Key tunables**: GCPolicy, MaxRAMPercentage (JVM), quarkus.thread-pool.core-threads (Quarkus)
+- **Validation**: Monitor GC behavior, heap utilization, and thread pool saturation after applying runtime recommendations
+
+### Container in Multi-Cluster Environments
+- Use namespace filtering for targeted container analysis
+- Compare container's recommendations across clusters
+- Identify cluster-specific optimization opportunities for the container
+- Standardize resource allocation policies for similar containers
