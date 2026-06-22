@@ -2,6 +2,9 @@ package org.mcp_server;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.ws.rs.ProcessingException;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.health.HealthCheck;
 import org.eclipse.microprofile.health.HealthCheckResponse;
 import org.eclipse.microprofile.health.Readiness;
@@ -45,25 +48,63 @@ public class KruizeApiHealthCheck implements HealthCheck {
             
             return HealthCheckResponse.named("Kruize API")
                     .up()
-                    .withData("responseTime", responseTime + "ms")
+                    .withData("responseTimeMs", responseTime)
                     .build();
                     
-        } catch (Exception e) {
-            log.warn("Kruize API health check failed: {}", e.getMessage());
+        } catch (WebApplicationException e) {
+            // HTTP-level errors (4xx, 5xx responses)
+            Response response = e.getResponse();
+            int statusCode = response.getStatus();
+            String statusInfo = response.getStatusInfo().getReasonPhrase();
             
-            // Extract meaningful error message
-            String errorMessage = e.getMessage();
-            if (errorMessage != null && errorMessage.contains("status code")) {
-                // Extract just the status code part for clarity
-                int statusIndex = errorMessage.indexOf("status code");
-                if (statusIndex > 0) {
-                    errorMessage = "Kruize API returned: " + errorMessage.substring(statusIndex);
-                }
-            }
+            log.warn("Kruize API health check failed with HTTP {}: {}", statusCode, statusInfo);
             
             return HealthCheckResponse.named("Kruize API")
                     .down()
-                    .withData("error", errorMessage)
+                    .withData("error", "HTTP error")
+                    .withData("statusCode", statusCode)
+                    .withData("statusMessage", statusInfo)
+                    .build();
+                    
+        } catch (ProcessingException e) {
+            // Connection/network errors (timeouts, connection refused, etc.)
+            String errorType = "Connection error";
+            String errorMessage = e.getMessage();
+            
+            // Identify specific connection issues by checking the exception message and cause
+            Throwable cause = e.getCause();
+            if (cause != null) {
+                if (cause instanceof java.net.ConnectException) {
+                    errorType = "Connection refused";
+                } else if (cause instanceof java.net.SocketTimeoutException) {
+                    errorType = "Connection timeout";
+                } else if (cause instanceof java.net.UnknownHostException) {
+                    errorType = "Unknown host";
+                }
+            }
+            
+            // Check for Netty ConnectTimeoutException in the message
+            if (errorMessage != null && errorMessage.contains("ConnectTimeoutException")) {
+                errorType = "Connection timeout";
+            }
+            
+            log.warn("Kruize API health check failed: {} - {}", errorType, errorMessage);
+            
+            return HealthCheckResponse.named("Kruize API")
+                    .down()
+                    .withData("error", errorType)
+                    .withData("details", errorMessage)
+                    .build();
+                    
+        } catch (Exception e) {
+            // Catch-all for unexpected errors
+            log.warn("Kruize API health check failed with unexpected error: {}", e.getMessage());
+            
+            return HealthCheckResponse.named("Kruize API")
+                    .down()
+                    .withData("error", "Unexpected error")
+                    .withData("type", e.getClass().getSimpleName())
+                    .withData("message", e.getMessage())
                     .build();
         }
     }
