@@ -1,20 +1,20 @@
 # ---- Build stage ----
-# Red Hat UBI9 OpenJDK 21 image includes Maven and runs as non-root (uid 185)
-FROM registry.access.redhat.com/ubi9/openjdk-21:1.24-2.1782292637 AS build
+# Red Hat UBI9 OpenJDK 21 image defaults to non-root uid 185 (default:root);
+# /deployments is pre-created and owned by that user, so no privilege escalation needed.
+FROM registry.access.redhat.com/ubi9/openjdk-21:1.24-3 AS build
 
-USER root
-COPY pom.xml /usr/src/app/pom.xml
-COPY src /usr/src/app/src
-RUN mvn -f /usr/src/app/pom.xml -B clean package
+COPY pom.xml /deployments/pom.xml
+COPY src /deployments/src
+RUN mvn -f /deployments/pom.xml -B clean package
 
 # ---- Runtime stage ----
 # Minimal Red Hat UBI9 JRE image; runs as non-root user 185 by default
-FROM registry.access.redhat.com/ubi9/openjdk-21-runtime:1.24-2.1782293370
+FROM registry.access.redhat.com/ubi9/openjdk-21-runtime:1.24-3
 
 WORKDIR /deployments
 
 # Copy the executable JAR from the build stage
-COPY --from=build /usr/src/app/target/*-runner.jar /deployments/app.jar
+COPY --from=build /deployments/target/*-runner.jar /deployments/app.jar
 
 EXPOSE 8080
 
